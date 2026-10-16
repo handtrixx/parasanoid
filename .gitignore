@@ -1,0 +1,8 @@
+.env
+
+# Rust build artifacts (main crate + ui-rust)
+/target/
+ui-rust/target/
+
+# ui-rust scratch sqlite
+ui-rust/data.db

@@ -1,0 +1,34 @@
+# Paranoid server deployment (runs on the storage box).
+#
+#   * parasanoid-server — Rust server (JSON API + discovery loop)
+#   * ui                — Next.js UI (proxies /api -> the server)
+#
+# Clients are deployed per-target via docker/client.compose.yaml. They
+# self-register with the server on startup; no static client list required.
+
+services:
+  parasanoid-server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    image: parasanoid/server:dev
+    environment:
+      PARASANOID_LISTEN: :8080
+      PARASANOID_POLL_INTERVAL: "10"
+      # Optional static fallback list (comma-separated) for air-gapped clients
+      # that cannot self-register, e.g. http://host1:9100,http://host2:9100
+      # PARASANOID_CLIENTS: ""
+      RUST_LOG: info
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    image: parasanoid/ui:dev
+    environment:
+      # Where the UI proxies /api to (same compose network -> service name).
+      NEXT_PUBLIC_API_BASE: http://parasanoid-server:8080
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

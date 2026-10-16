@@ -1,0 +1,39 @@
+[package]
+name = "parasanoid-ui-rust"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Throwaway prototype: Rust server-rendered UI process that owns SQLite and proxies the paranoid server API."
+
+[[bin]]
+name = "parasanoid-ui-rust"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "fs", "cors"] }
+futures = "0.3"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
+# askama 0.13 renders to a String via Template::render(); axum::Html wraps it.
+# (askama_axum 0.3 targets askama 0.12, so we render manually instead.)
+askama = "0.13"
+
+# SQLite lives in the UI process (never the worker). Runtime-only feature set;
+# no compile-time DB check, so this builds without a database URL at build time.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1"
+anyhow = "1"
+
+[profile.release]
+strip = true
+opt-level = "z"

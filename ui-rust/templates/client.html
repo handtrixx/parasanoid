@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Client · parasanoid{% endblock %}
+{% block content %}
+{% if err.is_some() %}
+{% let err = err.as_ref().unwrap() %}
+<div class="alert alert-danger">{{ err }}</div>
+{% else %}
+{% if summary.is_some() %}
+{% let summary = summary.as_ref().unwrap() %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Clients</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ summary.name }}</li>
+  </ol>
+</nav>
+<h1 class="h3 mb-1">{{ summary.name }}</h1>
+<p class="text-muted mb-3">{{ summary.url }}</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card body-sm"><div class="card-body"><div class="text-uppercase small text-muted">Host</div><div class="fw-semibold">{{ summary.name }}</div></div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-uppercase small text-muted">Up since</div><div class="fw-semibold">{{ summary.up_since.as_deref().unwrap_or("n/a") }}</div></div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-uppercase small text-muted">Last seen</div><div class="fw-semibold">{{ crate::relative(summary.last_seen.as_deref()) }}</div></div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="text-uppercase small text-muted">Last inventory</div><div class="fw-semibold">{{ crate::relative(summary.last_inventory_taken_at.as_deref()) }}</div></div></div></div>
+</div>
+
+{% if inventory.is_some() %}
+{% let inv = inventory.as_ref().unwrap() %}
+<div class="mb-4">
+  <h2 class="h6">Host</h2>
+  <dl class="row mb-0">
+    <div class="col-sm-4 text-muted">Host</div><div class="col-sm-8 fw-semibold">{{ inv.host.hostname }}</div>
+    <div class="col-sm-4 text-muted">OS</div><div class="col-sm-8 fw-semibold">{{ inv.host.os }} {{ inv.host.release }}</div>
+    <div class="col-sm-4 text-muted">Arch</div><div class="col-sm-8 fw-semibold">{{ inv.host.architecture }}</div>
+    <div class="col-sm-4 text-muted">Uptime</div><div class="col-sm-8 fw-semibold">{{ crate::uptime_human(inv.host.uptime_seconds) }}</div>
+    <div class="col-sm-4 text-muted">RAM</div><div class="col-sm-8 fw-semibold">{{ crate::format_bytes(inv.host.ram_bytes) }}</div>
+  </dl>
+</div>
+
+<div class="mb-4">
+  <h2 class="h6">Filesystems</h2>
+  {% if inv.filesystems.is_empty() %}
+    <div class="text-muted">None detected.</div>
+  {% else %}
+  <table class="table table-sm">
+    <thead><tr><th>Type</th><th>Count</th><th>Strategy</th></tr></thead>
+    <tbody>
+      {% for fs in inv.filesystems %}
+      <tr><td>{{ fs.fs_type }}</td><td>{{ fs.count }}</td><td>{{ fs.strategy }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="mb-4">
+  <h2 class="h6">Tools</h2>
+  {% if inv.tools.is_empty() %}
+    <div class="text-muted">None detected.</div>
+  {% else %}
+  <table class="table table-sm">
+    <thead><tr><th>Tool</th><th>Status</th><th>Version</th></tr></thead>
+    <tbody>
+      {% for t in inv.tools %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td>{% if t.available %}<span class="badge bg-success-subtle text-success-emphasis">available</span>{% else %}<span class="badge bg-secondary">missing</span>{% endif %}</td>
+        <td class="text-muted small">{{ t.version.as_deref().unwrap_or("n/a") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% else %}
+  <div class="alert alert-secondary">No inventory snapshot cached yet — waiting for the next worker poll.</div>
+{% endif %}
+{% else %}
+  <div class="alert alert-secondary">No summary available.</div>
+{% endif %}
+{% endif %}
+{% endblock %}

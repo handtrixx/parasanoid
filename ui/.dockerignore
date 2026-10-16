@@ -1,0 +1,10 @@
+.next
+node_modules
+.git
+.gitignore
+docker
+docs
+*.md
+.env*
+!.env.example
+!pnpm-lock.yaml

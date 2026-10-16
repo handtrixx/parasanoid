@@ -1,0 +1,33 @@
+# Per-target client deployment. Copy/symlink this onto each backup target host
+# and run `docker compose -f docker/client.compose.yaml up -d --build`.
+#
+# The client runs privileged so it can talk to the host's filesystems (ZFS uses
+# the host kernel module). It self-registers with the server, then the server
+# reaches out to it for inventory.
+#
+# Adjust the URLs/paths below to match your environment:
+#   * PARASANOID_SERVER_URL   -> where the server is reachable from this host
+#   * PARASANOID_PUBLISHED_URL -> where the server can reach THIS client
+#   * PARASANOID_CLIENT_ID    -> friendly name shown in the UI
+
+services:
+  parasanoid-client:
+    build:
+      context: ..
+      dockerfile: docker/client.Dockerfile
+    image: parasanoid/client:dev
+    container_name: parasanoid-client
+    privileged: true
+    environment:
+      PARASANOID_SERVER_URL: http://server.example.com:8080
+      PARASANOID_PUBLISHED_URL: http://<this-host>:9100
+      PARASANOID_CLIENT_ID: <target-name>
+      RUST_LOG: info
+    volumes:
+      # Expose host ZFS state + device access to the privileged container.
+      - /:/host:rslave
+      - /etc/zfs:/etc/zfs:ro
+      - /var/zfs:/var/zfs:ro
+      - /sys:/sys:ro
+      - /dev:/dev
+    restart: unless-stopped

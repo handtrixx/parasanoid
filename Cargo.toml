@@ -1,0 +1,38 @@
+[package]
+name = "parasanoid-worker"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["Niklas <niklas@handtrixxx.com>"]
+repository = "https://git.handtrixxx.com/parasanoid/parasanoid.git"
+description = "Single dual-role worker: a server brain and a host-scanning API bridge."
+
+[[bin]]
+name = "parasanoid-worker"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "fs", "cors"] }
+futures = "0.3"
+
+# Server -> client discovery. Same-LAN HTTP only for v0; TLS (mutual TLS /
+# server pinning) is a future hardening.
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+thiserror = "1"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[profile.release]
+strip = true
+opt-level = "z"

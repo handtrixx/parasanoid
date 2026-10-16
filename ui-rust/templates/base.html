@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}parasanoid{% endblock %}</title>
+    <link rel="stylesheet" href="/assets/css/bootstrap.min.css" />
+    {% block head %}{% endblock %}
+  </head>
+  <body class="pb-4">
+    <header class="navbar navbar-expand navbar-dark bg-body-tertiary border-bottom sticky-top">
+      <div class="container">
+        <a class="navbar-brand fw-bold" href="/">
+          🛡️ <span class="text-light">parasanoid</span>
+        </a>
+        <ul class="navbar-nav me-auto mb-2 mb-md-0">
+          <li class="nav-item"><a class="nav-link" href="/">Clients</a></li>
+        </ul>
+        <div class="d-flex align-items-center">
+          <span class="badge bg-success-subtle text-success-emphasis">Rust UI · prototype</span>
+        </div>
+      </div>
+    </header>
+    <main class="container mt-4">
+      {% block content %}{% endblock %}
+    </main>
+    <script src="/assets/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
