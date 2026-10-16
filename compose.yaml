@@ -1,7 +1,7 @@
 # Paranoid server deployment (runs on the storage box).
 #
 #   * parasanoid-server — Rust server (JSON API + discovery loop)
-#   * ui                — Next.js UI (proxies /api -> the server)
+#   * ui-rust           — Rust server-rendered UI (proxies /api -> the server)
 #
 # Clients are deployed per-target via docker/client.compose.yaml. They
 # self-register with the server on startup; no static client list required.
@@ -21,14 +21,25 @@ services:
       RUST_LOG: info
     restart: unless-stopped
 
-  ui:
+  ui-rust:
     build:
-      context: ./ui
+      context: ./ui-rust
       dockerfile: Dockerfile
-    image: parasanoid/ui:dev
+    image: parasanoid/ui-rust:dev
     environment:
       # Where the UI proxies /api to (same compose network -> service name).
-      NEXT_PUBLIC_API_BASE: http://parasanoid-server:8080
+      PARASANOID_SERVER_URL: http://parasanoid-server:8080
+      # Where the UI listens. The scratch SQLite DB lives under /data (a named
+      # volume, so the cache survives restarts — it repopulates on start).
+      PARASANOID_UI_LISTEN: :3100
+      PARASANOID_DB_PATH: /data/data.db
     ports:
-      - "3000:3000"
+      - "3100:3100"
+    volumes:
+      - ui-rust-db:/data
+    depends_on:
+      - parasanoid-server
     restart: unless-stopped
+
+volumes:
+  ui-rust-db:

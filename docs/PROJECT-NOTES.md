@@ -83,6 +83,42 @@ Env vars in use:
 - ui-rust only: `PARASANOID_SERVER_URL` (`http://localhost:8080`),
   `PARASANOID_UI_LISTEN` (`:3100`), `PARASANOID_DB_PATH` (`./ui-rust/data.db`).
 
+## Decisions
+
+> Recorded 2026-10-16, after the inspection. This is a project decision, not an
+> inspection finding.
+
+- **The Rust UI (`ui-rust/`) is the canonical UI; the Next.js UI (`ui/`) was
+  removed 2026-10-16.** The Rust UI (axum server-render + `askama` + SQLite
+  cache, Bootstrap 6 alpha) is the real UI direction. Both UIs were read-only
+  discovery/inventory views (no backup control plane), so there was no functional
+  gap in dropping Next.js. `ui/` is now deleted; only `ui-rust/` remains.
+  - **Compose repointed (2026-10-16):** the old `ui` service (port 3000) was
+    replaced by a `ui-rust` service. A two-stage `ui-rust/Dockerfile` builds the
+    server-rendered binary, and `compose.yaml` runs it on `:3100`, proxying to
+    `parasanoid-server:8080` over the compose network (via
+    `PARASANOID_SERVER_URL`). Scratch SQLite is kept in a named volume.
+
+- **Decision confirmed/actionable (live check 2026-10-16).** The Rust UI builds
+  (release build verified below) and **serves correctly at
+  `http://127.0.0.1:3100`** (`HTTP 200`, renders the Bootstrap dark-theme client
+  page; `/health` → `ok`). It is reachable in a browser, so the scaffold is sound
+  and dropping Next.js was safe — there is no functional gap (both were read-only
+  discovery views).
+
+## Live check — 2026-10-16
+
+- **`http://127.0.0.1:3100` (Rust UI) → `HTTP 200`, renders.** But it is a
+  **proxy, not standalone**: it dials the `parasanoid-worker` server on `:8080`,
+  mirrors clients into SQLite, and renders them. `:8080` is **not running** (no
+  worker/server process, no `parasanoid-server` container), so the client table is
+  **empty** and the page shows the banner:
+  `server unreachable — showing cached data (GET http://localhost:8080/api/discovery/clients)`.  
+  _"Shows nothing" is expected until the worker server is up — it is not a UI bug._
+- To see data: run the server (e.g. `cargo run -- server`, default `:8080`), then
+  refresh `:3100`. With no clients on the LAN it will still be empty, but the
+  "server unreachable" banner will disappear.
+
 ## Next steps required
 
 These are ordered roughly from "unblocks a usable product" to "polish."
@@ -114,17 +150,21 @@ None exist (`#[test]` is absent everywhere). `client/mod.rs` references tests
 that don't exist. Worth at least: `inventory` serialization, `slug()`,
 `strategy_for`, `host_tools_ready`, and router integration tests for both roles.
 
-### 5. Make the Next.js UI build reproducible
-No `pnpm-lock.yaml` and no `package-lock.json` are present. `ui/Dockerfile` copies
-`package-lock.json pnpm-lock.yaml*` and runs `pnpm install --frozen-lockfile ||
-pnpm install`; without a committed lockfile the build pins runtime but isn't
-reproducible. Generate + commit a lockfile. (Also the image uses `node:26-alpine`
-/ `.nvmrc` 26 — verify that toolchain actually exists before relying on it.)
+### 4b. Remove Next.js — DONE (2026-10-16)
+Per the Decisions section, `ui/` was deleted and **`compose.yaml` was repointed**
+from the old `ui` service (port 3000) to a `ui-rust` service on port 3100
+(`PARASANOID_SERVER_URL` → `:8080`, scratch SQLite under a named volume). A
+two-stage `ui-rust/Dockerfile` builds the server-rendered binary. `ui-rust/`
+runs standalone via `cargo run` locally (env `PARASANOID_UI_LISTEN`,
+`PARASANOID_SERVER_URL`, `PARASANOID_DB_PATH`).
 
-### 6. Lock down the UI stack / toolchain
-The UI pins bleeding-edge versions (Next 16.3.8, React 19.2.8, MUI 9.4.0,
-TypeScript 7, oxlint 1.87). Fine for a probe; verify the toolchain is sane before
-production use.
+> The reproducible-build (#5) and toolchain lock-down (#6) items referred to the
+> Next.js stack and are now moot (ui/ gone). Their spirit carries over: the Rust
+> UI build is still **not committed** — `ui-rust/Dockerfile` and `ui-rust/.dockerignore`
+> exist on disk but are untracked, and `Cargo.lock` should stay version-controlled
+> for a reproducible build. Committing the removal is the follow-up.
+
+### 5. (Next.js build reproducibility — superseded; see note on 4b.)
 
 ### 7. Security hardening (already flagged in code comments)
 Discovery + client bridge is plain same-LAN HTTP. `Cargo.toml` notes future
@@ -152,10 +192,9 @@ touches any non-LAN network.
   `.unwrap_or_default()` — a discovery hiccup is silent; consider surfacing or
   at least tracing it.
 - **No root README.** Only `ui-rust/README.md` exists; the worker and UI have none.
-- **UI is mid-migration:** the Next.js UI (`ui/`) is the initial pass; the real UI
-  direction is `ui-rust` (Rust server-rendered + Bootstrap 6 alpha), which stopped
-  during scaffolding. The repo currently has two parallel UIs until the migration
-  is finished or the Next.js one is dropped.
+- **None remaining from the original inspection.** `ui/` is dropped (see 4b), so
+  the two-parallel-UI situation is resolved. The Rust UI itself is still
+  scaffolding (no control plane yet) — but that is forward work, not a migration.
 
 ## Verification done
 

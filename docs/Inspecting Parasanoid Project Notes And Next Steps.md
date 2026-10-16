@@ -26,8 +26,8 @@ Scan model is shared by both roles in `src/inventory.rs`.
 | Path | Role | Status |
 |------|------|--------|
 | `src/` | Dual-role worker (server + client) | Builds (debug binary present) |
-| `ui/src/` | Initial Next.js 16 + React 19 + MUI 9 UI (dark "console" theme) | Source only; superseded by the Rust migration |
-| `ui-rust/src/` | **Real UI — migrated here to Rust** (axum server-render + `askama` + SQLite cache, Bootstrap 6 alpha) | **In progress, stopped mid-scaffolding**; not wired into compose |
+| `ui/` | Initial Next.js 16 + React 19 + MUI 9 UI (dark "console" theme) | **Removed 2026-10-16** |
+| `ui-rust/src/` | **Canonical UI** — axum server-render + `askama` + SQLite cache, Bootstrap 6 alpha | Serves correctly at `:3100`; no control plane yet |
 
 Server is currently **purely observatory**: `/api/backup/streams` and
 `/api/backup/snapshots` return **501**.
@@ -52,12 +52,18 @@ Server is currently **purely observatory**: `/api/backup/streams` and
 - Duplicate `slug()` in `state.rs` + `discovery.rs`; a new `reqwest::Client`
   built per probe; ui-rust silently swallows discovery errors.
 
-## Done this session
-- Wrote root `README.md` (correct framing: `ui-rust` is the migration-in-progress).
+## This session (2026-10-16 — next.js dropped)
+- **Confirmed `ui-rust/` serves at `http://127.0.0.1:3100`** (verified: HTTP 200, renders Bootstrap page, `/health` → `ok`). Empty client list is **expected** — the worker server on `:8080` isn't running; not a UI bug.
+- **Fixed the blank-page bug**: `clients_list` previously returned a bare `<div>` + HTTP 503 on server failure (browsers render that blank); it now renders the full page with a warning banner.
+- **Removed the Next.js UI (`ui/`)** — `ui-rust/` is now the canonical UI. `compose.yaml` was **repointed** to a `ui-rust` service on `:3100` (was `ui` on `:3000`; `PARASANOID_SERVER_URL` → `:8080`, scratch SQLite under a named volume).
+
+## Prior session work
+- Wrote root `README.md` (correct framing: `ui-rust` is the UI).
 - Wrote `docs/PROJECT-NOTES.md` (full inspection).
-- Updated `ui-rust/README.md` to reflect migration-in-progress status.
+- Updated `ui-rust/README.md` to reflect the current status.
 
 ## Validation
 Inspected every source file, compose, Dockerfile, `deps.sh`, template; confirmed
 worker builds and the gaps (no VCS, no tests, no UI lockfile, dead env vars).
-Not run: release build, `docker compose config`, `cargo test`.
+**This session:** `cargo build` (ui-rust) succeeds; ran the binary and `curl`ed `:3100` → HTTP 200, page renders, `/health` → `ok`; `docker compose config` → valid.
+Not run: full release build, `cargo test` (nothing to run).

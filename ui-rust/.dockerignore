@@ -1,0 +1,5 @@
+# Keep the build context small — target/ and the scratch DB are produced at
+# build/run time and don't need to be sent to the daemon.
+target/
+data.db
+*.db

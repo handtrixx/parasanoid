@@ -219,6 +219,7 @@ fn render_page<T: Template>(page: T) -> Response {
 #[template(path = "clients.html")]
 struct ClientsPage {
     clients: Vec<models::ClientSummary>,
+    warning: Option<String>,
 }
 
 async fn clients_list(State(state): State<Arc<AppState>>) -> Response {
@@ -245,16 +246,14 @@ async fn clients_list(State(state): State<Arc<AppState>>) -> Response {
     )
     .collect();
 
-    match api::fetch_clients(&state.server_url, &state.http).await {
-        Ok(_) => render_page(ClientsPage { clients }),
-        Err(e) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Html(format!(
-                "<div class=\"alert alert-warning\">server unreachable: {e}. showing cached data.</div>\n",
-            )),
-        )
-            .into_response(),
-    }
+    // On server failure, fall back to cached clients and surface a warning
+    // banner. Previously this returned a bare 129-byte <div> (HTTP 503), which
+    // the browser rendered as a blank page.
+    let warning = match api::fetch_clients(&state.server_url, &state.http).await {
+        Ok(_) => None,
+        Err(e) => Some(format!("server unreachable — showing cached data ({e})")),
+    };
+    render_page(ClientsPage { clients, warning })
 }
 
 #[derive(askama::Template)]

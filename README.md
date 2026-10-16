@@ -25,8 +25,7 @@ Role selection: `server`/`client` subcommand > `--server`/`--client` >
 ```
 .
 ├── src/              # the dual-role worker (server + client) — builds cleanly
-├── ui/               # Next.js 16 + MUI 9 UI (initial attempt)
-├── ui-rust/          # migration of the UI to Rust server-rendered + Bootstrap 6 alpha
+├── ui-rust/          # canonical UI — Rust server-rendered + Bootstrap 6 alpha
 ├── docker/           # server + client Dockerfiles, deps.sh, per-target compose
 ├── compose.yaml      # server + UI (v0 deployment)
 └── docs/             # project notes (docs/PROJECT-NOTES.md)
@@ -52,10 +51,12 @@ exists).
 
 ## UI
 
-- **`ui/`** — Next.js + MUI, dark "console" theme. Initial pass.
-- **`ui-rust/`** — the same UI, **being migrated to Rust** (axum server-rendered
-  + `askama` templates + SQLite cache, Bootstrap 6 alpha components). See
-  `ui-rust/README.md`.
+- **`ui-rust/`** — the **canonical UI**. Rust server-rendered with axum +
+  `askama` templates + a SQLite cache, Bootstrap 6 alpha components. This is the
+  UI direction; see `ui-rust/README.md`.
+- **`ui/`** — the initial Next.js + MUI pass. **Removed 2026-10-16** once the Rust
+  UI scaffold was confirmed working (`docs/PROJECT-NOTES.md` → Decisions).
+  Not wired into `compose.yaml`.
 
 ## Data model
 
@@ -69,8 +70,10 @@ exists).
   clients over plain LAN HTTP.
 - **Data plane:** not implemented — `/api/backup/streams` and `/api/backup/snapshots`
   return `501`. The server is currently purely observatory.
-- **UI:** the Next.js UI exists as an initial pass; the real UI direction is the
-  Rust migration in `ui-rust`, which is **still in scaffolding**.
+- **UI:** the Rust UI (`ui-rust`) is the **canonical UI**; the Next.js UI (`ui/`)
+  was removed 2026-10-16. The Rust UI is functional as a read-only
+  discovery/inventory view but is still **scaffolding** — no control plane and not
+  yet wired into `compose.yaml`.
 
 ## Next steps
 
