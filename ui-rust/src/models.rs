@@ -54,3 +54,32 @@ pub struct Inventory {
     pub filesystems: Vec<DetectedFs>,
     pub tools: Vec<DetectedTool>,
 }
+
+/// One step of a backup run (`GET /api/backup/runs` and `/run/:id`).
+///
+/// A "step" is a single external tool invocation (an `rsync`, a `syncoid`, a
+/// `zstd` compress, ...). The strings carry the tool's raw stdout/stderr so the
+/// UI can show what the backup actually did.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepModel {
+    pub tool: String,
+    pub args: Vec<String>,
+    pub success: bool,
+    pub exit_code: Option<i32>,
+    pub elapsed_ms: u64,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// A completed backup run as returned by `GET /api/backup/runs` and rendered
+/// inline (with steps) from the UI's cache. Dates are RFC3339 strings (chrono
+/// serializes `DateTime<Utc>` that way), matching what the server emits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunModel {
+    pub run_id: String,
+    pub client_id: String,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub steps: Vec<StepModel>,
+    pub succeeded: bool,
+}

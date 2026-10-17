@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Logs · parasanoid{% endblock %}
+{% block content %}
+
+{% if error.is_some() %}
+  <div class="card card-subtle">
+    <div class="card-body fg-secondary">
+      <div class="card-title h6 mb-1">Logs unavailable</div>
+      <div class="card-text">{{ error.as_deref().unwrap_or_default() }}</div>
+    </div>
+  </div>
+{% else %}
+
+<div class="app-log-toolbar">
+  <div>
+    <h1 class="h3 mb-1">Logs</h1>
+    <p class="fg-secondary mb-0">
+      Server log tail.
+      {% if log_source.is_some() %}
+        Source: <code>{{ log_source.as_deref().unwrap_or_default() }}</code>.
+      {% else %}
+        No server log configured — start the stack with <code>./start-dev.sh</code>.
+      {% endif %}
+    </p>
+  </div>
+  <div class="app-log-controls">
+    <label class="app-log-follow">
+      <input type="checkbox" id="followToggle" checked /> live follow
+    </label>
+    <select id="lineCount" class="app-log-count">
+      <option value="200">200 lines</option>
+      <option value="500" selected>500 lines</option>
+      <option value="1000">1000 lines</option>
+    </select>
+    <button class="btn-outline" id="copyBtn" type="button">Copy</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>parasanoid server log</span>
+    <span class="fg-secondary small" id="logStatus">connecting…</span>
+  </div>
+  <div class="card-body p-0">
+    <pre class="log-pre" id="logLines">{% for line in lines %}{{ line }}
+{% endfor %}</pre>
+    {% if lines.is_empty() %}
+    <div class="log-empty fg-secondary">No log lines yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const el = document.getElementById('logLines');
+    const status = document.getElementById('logStatus');
+    if (!el) return;
+    const followEl = document.getElementById('followToggle');
+    const countEl = document.getElementById('lineCount');
+    const copyEl = document.getElementById('copyBtn');
+
+    let timer = null;
+    async function pull() {
+      const lines = countEl ? countEl.value : '500';
+      try {
+        const r = await fetch('/api/logs?lines=' + encodeURIComponent(lines));
+        if (!r.ok) {
+          status.textContent = 'error ' + r.status;
+          return;
+        }
+        const data = await r.json();
+        el.textContent = data.lines.join('\n');
+        status.textContent = data.count + ' lines · ' + new Date().toLocaleTimeString();
+        if (followEl && followEl.checked) {
+          el.scrollTop = el.scrollHeight;
+        }
+      } catch (e) {
+        status.textContent = 'network error';
+      }
+    }
+
+    function schedule() {
+      if (timer) clearInterval(timer);
+      timer = setInterval(pull, 4000);
+    }
+
+    if (followEl) followEl.addEventListener('change', function () {
+      if (this.checked && el) el.scrollTop = el.scrollHeight;
+    });
+    if (countEl) countEl.addEventListener('change', function () { pull(); });
+    if (copyEl) copyEl.addEventListener('click', async function () {
+      try {
+        await navigator.clipboard.writeText(el.textContent);
+        const original = copyEl.textContent;
+        copyEl.textContent = 'Copied!';
+        setTimeout(function () { copyEl.textContent = original; }, 1200);
+      } catch (_) { /* clipboard may be unavailable */ }
+    });
+
+    pull();
+    schedule();
+  })();
+</script>
+{% endblock %}

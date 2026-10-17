@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Backups · parasanoid{% endblock %}
+{% block content %}
+
+{% if warning.is_some() %}
+  <div class="alert theme-warning" role="alert">
+    {{ warning.as_deref().unwrap_or_default() }}
+    <button class="btn-close ms-auto" type="button" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+{% endif %}
+
+<div class="card card-subtle mb-3">
+  <div class="card-body">
+    <div class="card-title h6 mb-1">Backup operations</div>
+    <div class="card-text fg-secondary small mb-2">
+      Browse the backup runs that have been recorded. Each run expands to show the
+      tool invocations it executed (the rsync/syncoid/zstd commands and their output).
+    </div>
+    <div class="fg-secondary small">
+      ℹ Snapshot <em>file contents</em> aren't listed yet — this reflects run history
+      and the commands each run ran, not a browseable file tree.
+    </div>
+  </div>
+</div>
+
+{% if runs.is_empty() %}
+  <div class="card card-subtle"><div class="card-body fg-secondary">
+    No backups recorded yet. Trigger one from
+    <a href="/activities">Activities</a>.
+  </div></div>
+{% else %}
+<div class="app-runs">
+  {% for r in runs %}
+  {% let dur = crate::run_duration_human(r.started_at.as_deref(), r.ended_at.as_deref()) %}
+  <article class="app-run card card-subtle mb-2">
+    <details class="app-run-details">
+      <summary class="app-run-summary" aria-label="Expand run on {{ r.client_id }}">
+        <span class="app-run-status">
+          {% if r.succeeded %}
+            <span class="badge badge-subtle theme-success">success</span>
+          {% else %}
+            <span class="badge badge-subtle theme-danger">failed</span>
+          {% endif %}
+        </span>
+        <span class="app-run-meta">
+          <span class="fw-semibold">{{ r.client_id }}</span>
+          <span class="app-run-dot">·</span>
+          <span class="fg-secondary small">{{ crate::relative(r.started_at.as_deref()) }}</span>
+        </span>
+        <span class="app-run-meta ms-auto">
+          <span class="app-run-dur">{{ dur }}</span>
+          <span class="app-run-steps">{{ crate::run_op_label(r.steps.len()) }}</span>
+          <span class="app-run-chevron" aria-hidden="true">▾</span>
+        </span>
+      </summary>
+      <div class="app-run-body">
+        <div class="app-op-list">
+          {% for s in r.steps %}
+          <div class="app-op">
+            <div class="app-op-head">
+              <span class="badge badge-subtle {% if s.success %}theme-success{% else %}theme-danger{% endif %}">
+                {% if s.success %}✓{% else %}✗{% endif %}
+              </span>
+              <code class="app-op-tool">{{ s.tool }}</code>
+              {% if !s.args.is_empty() %}<code class="app-op-args">{{ s.args.join(" ") }}</code>{% endif %}
+              <span class="app-op-elapsed ms-auto">{{ crate::elapsed_human(s.elapsed_ms) }}</span>
+            </div>
+            {% if !s.stdout.is_empty() || !s.stderr.is_empty() %}
+            <div class="app-op-out">
+              {% if !s.stdout.is_empty() %}
+                <details class="output-block">
+                  <summary class="output-summary">stdout</summary>
+                  <pre class="output-pre">{{ s.stdout }}</pre>
+                </details>
+              {% endif %}
+              {% if !s.stderr.is_empty() %}
+                <details class="output-block">
+                  <summary class="output-summary">stderr</summary>
+                  <pre class="output-pre stderr">{{ s.stderr }}</pre>
+                </details>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

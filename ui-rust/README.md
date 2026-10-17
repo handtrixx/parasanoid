@@ -9,9 +9,13 @@ It is deliberately kept as a **separate, self-contained crate** so it never
 taints the worker's "dumb bridge" boundary (the worker holds no database; SQLite
 lives here instead).
 
-> **Status: scaffolding only.** The migration stopped mid-process. The skeleton
-> (server render + SQLite cache + client list/detail pages) exists; pages, styling,
-> and the control plane (triggering backups) are still to come.
+> **Status: admin-dashboard shell is done.** Server render + SQLite cache + a
+> vertical, collapsible sidebar with four pages — **Dashboard** (`/`),
+> **Activities** (`/activities`, every run expandable to its tool invocations),
+> **Backups** (`/backups`, run history + the rsync/syncoid/zstd commands each run
+> ran), and **Logs** (`/logs`, server-log tail with live follow). The control
+> plane (trigger all policies from Activities) is wired; browseable snapshot
+> file-contents are not (see the Backups page caveat + `../ROADMAP.md`).
 
 ## What it does today
 - Owns **SQLite** via `sqlx` (`Send` + async — the reason the worker can't hold a DB).

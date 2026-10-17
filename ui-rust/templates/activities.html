@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Activities · parasanoid{% endblock %}
+{% block toolbar %}
+<div class="app-toolbar">
+  <div>
+    <h1 class="h3 mb-1">Activities</h1>
+    <p class="fg-secondary mb-0">Every backup run, newest first. Expand a run to see the tool invocations it executed.</p>
+  </div>
+  <div class="app-toolbar-actions">
+    <button class="btn-solid" id="runNowBtn" type="button">▶ Run backups now</button>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+
+{% if triggered.is_some() %}
+  <div class="alert theme-success" role="alert">
+    {{ triggered.as_deref().unwrap_or_default() }}
+    <button class="btn-close ms-auto" type="button" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+{% endif %}
+
+{% if warning.is_some() %}
+  <div class="alert theme-warning" role="alert">
+    {{ warning.as_deref().unwrap_or_default() }}
+    <button class="btn-close ms-auto" type="button" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+{% endif %}
+
+{% if runs.is_empty() %}
+  <div class="card card-subtle"><div class="card-body fg-secondary">
+    No runs recorded yet. Click <strong>Run backups now</strong> to kick off every
+    configured policy, or wait for the next scheduled run.
+  </div></div>
+{% else %}
+<div class="app-runs">
+  {% for r in runs %}
+  {% let dur = crate::run_duration_human(r.started_at.as_deref(), r.ended_at.as_deref()) %}
+  <article class="app-run card card-subtle mb-2">
+    <details class="app-run-details">
+      <summary class="app-run-summary" aria-label="Expand run {{ r.run_id }}">
+        <span class="app-run-status">
+          {% if r.succeeded %}
+            <span class="badge badge-subtle theme-success">success</span>
+          {% else %}
+            <span class="badge badge-subtle theme-danger">failed</span>
+          {% endif %}
+        </span>
+        <span class="app-run-meta">
+          <span class="app-run-when">{{ crate::relative(r.started_at.as_deref()) }}</span>
+          <span class="app-run-dot">·</span>
+          <span class="fw-semibold">{{ r.client_id }}</span>
+        </span>
+        <span class="app-run-meta ms-auto">
+          <span class="app-run-dur" title="{{ r.started_at.as_deref().unwrap_or_default() }} → {{ r.ended_at.as_deref().unwrap_or_default() }}">{{ dur }}</span>
+          <span class="app-run-steps">{{ crate::run_step_label(r.steps.len()) }}</span>
+          <span class="app-run-chevron" aria-hidden="true">▾</span>
+        </span>
+      </summary>
+      <div class="app-run-body">
+        {% if r.steps.is_empty() %}
+          <div class="fg-secondary small">This run recorded no steps.</div>
+        {% else %}
+        <table class="table table-sm table-verbose">
+          <tbody>
+            {% for s in r.steps %}
+            {% let sargs = s.args.join(" ") %}
+            <tr class="step-row">
+              <td class="step-cell">
+                <span class="badge badge-subtle {% if s.success %}theme-success{% else %}theme-danger{% endif %}">
+                  {% if s.success %}✓{% else %}✗{% endif %}
+                </span>
+                <code class="step-tool">{{ s.tool }}</code>
+                {% if !sargs.is_empty() %}<code class="step-args">{{ sargs }}</code>{% endif %}
+                <span class="step-elapsed">{{ crate::elapsed_human(s.elapsed_ms) }}</span>
+                {% if s.exit_code.is_some() %}<span class="step-exit">exit {{ s.exit_code.unwrap_or_default() }}</span>{% endif %}
+              </td>
+            </tr>
+            {% if (!s.stdout.is_empty() || !s.stderr.is_empty()) %}
+            <tr class="step-log-row">
+              <td class="step-log-cell">
+                {% if !s.stdout.is_empty() %}
+                  <details class="output-block">
+                    <summary class="output-summary">stdout</summary>
+                    <pre class="output-pre">{{ s.stdout }}</pre>
+                  </details>
+                {% endif %}
+                {% if !s.stderr.is_empty() %}
+                  <details class="output-block">
+                    <summary class="output-summary">stderr</summary>
+                    <pre class="output-pre stderr">{{ s.stderr }}</pre>
+                  </details>
+                {% endif %}
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </details>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+  document.getElementById('runNowBtn')?.addEventListener('click', async function () {
+    const btn = this;
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/backup/run', { method: 'GET' });
+      if (r.ok) {
+        location.href = '/activities?ran=1';
+      } else {
+        const body = await r.text().catch(() => '');
+        alert('Could not trigger backups' + (body ? ' — ' + body : '') + '.');
+      }
+    } catch (e) {
+      alert('Network error triggering backups: ' + e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+{% endblock %}

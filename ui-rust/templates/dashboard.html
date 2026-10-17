@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · parasanoid{% endblock %}
+{% block content %}
+
+{% if warning.is_some() %}
+  <div class="alert theme-warning" role="alert">
+    {{ warning.as_deref().unwrap_or_default() }}
+    <button class="btn-close ms-auto" type="button" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="sm:col-6 lg:col-3">
+    <div class="card card-subtle h-100"><div class="card-body">
+      <div class="fg-secondary small text-uppercase">Backup targets</div>
+      <div class="h3 mb-0">{{ client_count }}</div>
+    </div></div>
+  </div>
+  <div class="sm:col-6 lg:col-3">
+    <div class="card card-subtle h-100"><div class="card-body">
+      <div class="fg-secondary small text-uppercase">Runs total</div>
+      <div class="h3 mb-0">{{ total_runs }}</div>
+    </div></div>
+  </div>
+  <div class="sm:col-6 lg:col-3">
+    <div class="card card-subtle h-100"><div class="card-body">
+      <div class="fg-secondary small text-uppercase">Succeeded</div>
+      <div class="h3 mb-0"><span class="badge badge-subtle theme-success">{{ succeeded_runs }}</span></div>
+    </div></div>
+  </div>
+  <div class="sm:col-6 lg:col-3">
+    <div class="card card-subtle h-100"><div class="card-body">
+      <div class="fg-secondary small text-uppercase">Failed</div>
+      <div class="h3 mb-0"><span class="badge badge-subtle theme-danger">{{ failed_runs }}</span></div>
+    </div></div>
+  </div>
+</div>
+
+<h2 class="h6 text-uppercase fg-secondary mb-3">Recent activity</h2>
+
+{% if recent.is_empty() %}
+  <div class="card card-subtle"><div class="card-body fg-secondary">
+    No backup runs recorded yet. Trigger one from the
+    <a href="/activities">Activities</a> page, or wait for a policy to fire.
+  </div></div>
+{% else %}
+<div class="card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span>Recent runs</span>
+    <span class="fg-secondary small">newest first</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Client</th>
+            <th scope="col">Duration</th>
+            <th scope="col">Steps</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recent %}
+          {% let dur = crate::run_duration_human(r.started_at.as_deref(), r.ended_at.as_deref()) %}
+          <tr>
+            <td class="fg-secondary small">{{ crate::relative(r.started_at.as_deref()) }}</td>
+            <td>
+              <span class="fw-semibold">{{ r.client_id }}</span>
+            </td>
+            <td class="fg-secondary small">{{ dur }}</td>
+            <td class="fg-secondary small">{{ crate::run_step_label(r.steps.len()) }}</td>
+            <td>
+              {% if r.succeeded %}
+                <span class="badge badge-subtle theme-success">success</span>
+              {% else %}
+                <span class="badge badge-subtle theme-danger">failed</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

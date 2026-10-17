@@ -1,0 +1,46 @@
+{# Shared sidebar: rendered once as the persistent desktop sidebar and once
+   inside the mobile Drawer. `page` marks the active item (set by each page). #}
+<div class="app-sidebar-head">
+  <a class="app-brand" href="/">
+    <span class="app-brand-mark" aria-hidden="true">🛡️</span>
+    <span class="app-brand-text">parasanoid</span>
+  </a>
+  <div class="app-sidebar-actions">
+    {# Desktop collapse toggle (keeps icons-only mode). #}
+    <button
+      type="button"
+      class="btn-icon app-collapse d-none d-xl-flex"
+      id="sidebarCollapse"
+      aria-label="Collapse navigation"
+      aria-expanded="true"
+      aria-controls="appSidebar"
+    >‹</button>
+    {# Mobile close (only inside the drawer). #}
+    <button
+      type="button"
+      class="btn-icon app-close d-xl-none"
+      data-bs-dismiss="drawer"
+      aria-label="Close navigation"
+    >✕</button>
+  </div>
+</div>
+
+<nav class="app-nav" aria-label="Primary">
+  <a class="nav-link {% if page == "dashboard" %}is-active{% endif %}" href="/" {% if page == "dashboard" %}aria-current="page"{% endif %}>
+    <span class="nav-ico" aria-hidden="true">▤</span><span class="nav-lbl">Dashboard</span>
+  </a>
+  <a class="nav-link {% if page == "activities" %}is-active{% endif %}" href="/activities" {% if page == "activities" %}aria-current="page"{% endif %}>
+    <span class="nav-ico" aria-hidden="true">◑</span><span class="nav-lbl">Activities</span>
+  </a>
+  <a class="nav-link {% if page == "backups" %}is-active{% endif %}" href="/backups" {% if page == "backups" %}aria-current="page"{% endif %}>
+    <span class="nav-ico" aria-hidden="true">▤</span><span class="nav-lbl">Backups</span>
+  </a>
+  <a class="nav-link {% if page == "logs" %}is-active{% endif %}" href="/logs" {% if page == "logs" %}aria-current="page"{% endif %}>
+    <span class="nav-ico" aria-hidden="true">𝓛</span><span class="nav-lbl">Logs</span>
+  </a>
+</nav>
+
+<div class="app-sidebar-foot">
+  <span class="badge badge-subtle theme-secondary">Rust UI</span>
+  <a class="app-footer-link d-none d-xl-block" href="/">Backups · v0.1</a>
+</div>

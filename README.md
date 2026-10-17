@@ -61,18 +61,38 @@ plain argv vector (never through a shell).
 
 ### In dev
 
+The easiest way to run the whole stack locally is the one-shot script — it builds
+both crates and launches the server and the Rust UI in the background:
+
+```sh
+./start-dev.sh start        # build (debug) + launch server (:8080) and UI (:3100)
+# open http://127.0.0.1:3100
+./start-dev.sh status       # what is running
+./start-dev.sh stop         # stop both
+```
+
+Logs and pid files live under the gitignored `target/dev/` dir (see `start-dev.sh`
+for the defaults and the `PARASANOID_*` overrides). The data dir is
+`ui-rust/data.db` (scratch — delete to reset).
+
+If you rather run things by hand, the stack is two processes:
+
 ```sh
 # worker server (the "brain"), default :8080 — see "The worker" above
 cargo run -- server
 
 # the Rust UI (separate crate; not part of the repo workspace)
 cd ui-rust
-PARASANOID_SERVER_URL=http://localhost:8080 \
-PARASANOID_UI_LISTEN=127.0.0.1:3100 \
-PARASANOID_DB_PATH=./data.db \
+PARASANOID_SERVER_URL=http://localhost:8080 
+PARASANOID_UI_LISTEN=127.0.0.1:3100 
+PARASANOID_DB_PATH=./data.db 
 cargo run
 # open http://127.0.0.1:3100   (the list is empty until the server above is running)
 ```
+
+The UI dials the server for its data, so **start the server first** — the pages
+are empty ("No clients discovered yet") until it is up, which is normal. See
+`ui-rust/README.md` for the per-page dev run and env reference.
 
 ## Data model
 
@@ -90,9 +110,11 @@ cargo run
 - **Tests:** 4/4 green (data-plane router integration). Coverage gaps remain
   (`slug`, `host_tools_ready`, server control-plane routes — see `ROADMAP.md`).
 - **UI:** the Rust UI (`ui-rust`) is the **canonical UI**; the Next.js UI (`ui/`)
-  was removed 2026-10-16. The Rust UI is functional as a read-only
-  discovery/inventory view but is still **scaffolding** — no control plane and not
-  yet wired into `compose.yaml`.
+  was removed 2026-10-16. It renders an admin-dashboard shell — vertical,
+  collapsible sidebar with Dashboard / Activities / Backups / Logs pages, Bootstrap
+  6 alpha, server-rendered via `askama`, data cached in SQLite. The control plane
+  (triggering a backup run) is wired up; retention/prune and browseable backup
+  contents are not yet surfaced. Not yet wired into `compose.yaml`.
 
 ## Working on this project
 

@@ -101,8 +101,12 @@ rsync for ext4/xfs; hardlink (not bare copy) retention. Closed 2026-10-17.
 
 ### M5 — Control plane in the UI  ⏸️
 
-Today the Rust UI (`ui-rust`) is a read-only discovery/inventory view. Once the
-executor exists: trigger backups, inspect results, and see retention/prune status.
+The Rust UI (`ui-rust`) now renders an **admin-dashboard shell** (vertical,
+collapsible sidebar) with Dashboard / Activities / Backups / Logs pages, Bootstrap
+6 alpha, server-rendered via `askama` and cached in SQLite. The "Run backups now"
+button on the Activities page already drives the executor
+(`GET /api/backup/run`). Remaining: surface retention/prune status and browseable
+backup contents behind the Backups page.
 
 ---
 
@@ -118,17 +122,22 @@ Independent of milestones — good candidates for small, standalone PRs:
   (`rust-toolchain.toml`) and the client image's tool versions.
 - **Client Docker image.** `docker/client.Dockerfile` + `docker/deps.sh` need
   `sanoid`/`syncoid`/`zfs`/`btrfs` userland from pinned tarballs and a verify step.
-- **Bootstrap 6 UI modernization (`ui-rust/templates/`).** Migrated the server-
-  rendered `askama` templates to **Bootstrap 6.0.0-alpha.1** class names. V6 is a
-  breaking release — key changes: responsive utilities are **prefix** (`md:col-6`,
-  `md:table-responsive`, `md:navbar-expand`), not infix (`col-md-*`); surfaces are
-  `bg-1/2/3`; text fg is `fg-*` (`fg-muted` is gone → use `fg-secondary`); alert
-  colors are `alert.theme-*` (`.alert-danger` etc. are gone); badges are
-  `badge.badge-subtle.theme-*`; buttons are `btn-solid`/`btn-outline`; navbar uses
-  a `drawer drawer-end` on mobile (no collapse). The JS bundle is ESM-only
-  (`<script type="module">`, no `window.bootstrap` global), and the drawer navbar
-  toggler is `btn-icon navbar-toggler` with `data-bs-toggle="drawer"`. Served as
-  vendored static assets under `ui-rust/assets/` (no CDN).
+- **Bootstrap 6 UI modernization (`ui-rust/templates/`).** ✅ _done 2026-10-17._
+  Migrated the server-rendered `askama` templates to **Bootstrap 6.0.0-alpha.1**
+  class names. V6 is a breaking release — key changes: responsive utilities are
+  **prefix** (`md:col-6`, `md:table-responsive`, `md:navbar-expand`), not infix
+  (`col-md-*`); surfaces are `bg-1/2/3`; text fg is `fg-*` (`fg-muted` is gone →
+  use `fg-secondary`); alert colors are `alert.theme-*` (`.alert-danger` etc. are
+  gone); badges are `badge.badge-subtle.theme-*`; buttons are `btn-solid`/`btn-`
+  `outline`; navbar uses a `drawer drawer-end` on mobile (no collapse). The JS
+  bundle is ESM-only (`<script type="module">`, no `window.bootstrap` global), and
+  the drawer navbar toggler is `btn-icon navbar-toggler` with
+  `data-bs-toggle="drawer"`. Served as vendored static assets under `ui-rust/`
+  `assets/` (no CDN). **Also:** the Rust UI is now an admin-dashboard shell — a
+  vertical, collapsible sidebar (persistent on desktop, Drawer on mobile) with
+  Dashboard / Activities / Backups / Logs pages (`ui-rust/templates/`), wired up in
+  `ui-rust/src/main.rs` and driven by the server JSON API (`ui-rust/src/api.rs`),
+  cached in SQLite (`ui-rust/src/db.rs`). Drive it from `./start-dev.sh`.
 
 ---
 
