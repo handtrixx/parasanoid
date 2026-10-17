@@ -118,6 +118,17 @@ Independent of milestones — good candidates for small, standalone PRs:
   (`rust-toolchain.toml`) and the client image's tool versions.
 - **Client Docker image.** `docker/client.Dockerfile` + `docker/deps.sh` need
   `sanoid`/`syncoid`/`zfs`/`btrfs` userland from pinned tarballs and a verify step.
+- **Bootstrap 6 UI modernization (`ui-rust/templates/`).** Migrated the server-
+  rendered `askama` templates to **Bootstrap 6.0.0-alpha.1** class names. V6 is a
+  breaking release — key changes: responsive utilities are **prefix** (`md:col-6`,
+  `md:table-responsive`, `md:navbar-expand`), not infix (`col-md-*`); surfaces are
+  `bg-1/2/3`; text fg is `fg-*` (`fg-muted` is gone → use `fg-secondary`); alert
+  colors are `alert.theme-*` (`.alert-danger` etc. are gone); badges are
+  `badge.badge-subtle.theme-*`; buttons are `btn-solid`/`btn-outline`; navbar uses
+  a `drawer drawer-end` on mobile (no collapse). The JS bundle is ESM-only
+  (`<script type="module">`, no `window.bootstrap` global), and the drawer navbar
+  toggler is `btn-icon navbar-toggler` with `data-bs-toggle="drawer"`. Served as
+  vendored static assets under `ui-rust/assets/` (no CDN).
 
 ---
 
