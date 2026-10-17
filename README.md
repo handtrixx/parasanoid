@@ -54,10 +54,25 @@ plain argv vector (never through a shell).
 
 - **`ui-rust/`** — the **canonical UI**. Rust server-rendered with axum +
   `askama` templates + a SQLite cache, Bootstrap 6 alpha components. This is the
-  UI direction; see `ui-rust/README.md`.
+  UI direction; see `ui-rust/README.md` (how to run it in dev is there).
 - **`ui/`** — the initial Next.js + MUI pass. **Removed 2026-10-16** once the Rust
   UI scaffold was confirmed working (`docs/PROJECT-NOTES.md` → Decisions).
   Not wired into `compose.yaml`.
+
+### In dev
+
+```sh
+# worker server (the "brain"), default :8080 — see "The worker" above
+cargo run -- server
+
+# the Rust UI (separate crate; not part of the repo workspace)
+cd ui-rust
+PARASANOID_SERVER_URL=http://localhost:8080 \
+PARASANOID_UI_LISTEN=127.0.0.1:3100 \
+PARASANOID_DB_PATH=./data.db \
+cargo run
+# open http://127.0.0.1:3100   (the list is empty until the server above is running)
+```
 
 ## Data model
 
