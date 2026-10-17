@@ -44,10 +44,11 @@ PARASANOID_CLIENT_ID=host1 PARASANOID_LISTEN=:9100 cargo run -- client
 ```
 
 Server endpoints: `GET /api/health`, `/api/discovery/clients`,
-`/api/discovery/clients/{id}`, `/api/discovery/clients/{id}/inventory`.
-Client endpoints: `GET /api/health`, `/api/inventory`, `/api/status`,
-`POST /api/scan` (backup endpoints are stubbed with `501` until the data plane
-exists).
+`/api/discovery/clients/{id}`, `/api/discovery/clients/{id}/inventory`,
+`POST /api/discovery/register` (self-registration). Client endpoints:
+`GET /api/health`, `/api/inventory`, `/api/status`, `POST /api/scan`, and
+`POST /api/tools/{tool}` — the data plane: run a detected host tool with a
+plain argv vector (never through a shell).
 
 ## UI
 
@@ -68,16 +69,18 @@ exists).
 
 - **Worker:** builds (debug binary present). Two roles wired; discovery loop polls
   clients over plain LAN HTTP.
-- **Data plane:** not implemented — `/api/backup/streams` and `/api/backup/snapshots`
-  return `501`. The server is currently purely observatory.
+- **Data plane:** implemented — `POST /api/tools/{tool}` runs a detected host tool
+  (validated against `KNOWN_TOOLS`, JSON envelope result, per-call timeout); the
+  server forwards calls to the client that can run them.
+- **Tests:** 4/4 green (data-plane router integration). Coverage gaps remain
+  (`slug`, `host_tools_ready`, server control-plane routes — see `ROADMAP.md`).
 - **UI:** the Rust UI (`ui-rust`) is the **canonical UI**; the Next.js UI (`ui/`)
   was removed 2026-10-16. The Rust UI is functional as a read-only
   discovery/inventory view but is still **scaffolding** — no control plane and not
   yet wired into `compose.yaml`.
 
-## Next steps
+## Roadmap
 
-See `docs/PROJECT-NOTES.md` for the full list. In priority order: (1) implement the
-data plane (execute snapshots / replication), (2) finalize the client model
-(self-registration vs. static list — the compose file and code currently disagree),
-(3) version-control the project, (4) add tests, (5) make the UI build reproducible.
+See `ROADMAP.md` for the live, prioritized plan (M0 foundations → M1 data plane →
+M2 policy/plan builder → M3–M4 strategies → M5 UI control plane). M0 and M1 are
+**done**; the rest is planned there.
