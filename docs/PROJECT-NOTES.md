@@ -134,12 +134,27 @@ Env vars in use:
 
 These are ordered roughly from "unblocks a usable product" to "polish."
 
-### 1. Implement the data plane (the actual product)
-The two `/api/backup/*` endpoints return **501**. The server is currently purely
-observatory (discovers inventory); it does **not** trigger or run backups. The
-real value is: given an inventory, execute the matching `BackupStrategy` —
-ZFS via `sanoid`/`syncoid` (retention + replication), btrfs via `send`/`receive`,
-ext4/xfs via `rsync`/`restic`. This is the big open chunk of work.
+### 1. Implement the data plane (the actual product) — DONE (2026-10-17)
+The two `/api/backup/*` 501 stubs are gone and replaced by the real data plane:
+
+- **Client** (`src/client/toolapi.rs`): `POST /api/tools/:tool` runs a detected
+  tool (`rsync sanoid syncoid zfs zpool btrfs restic`) with a plain argv vector
+  (**never through a shell**), validates the name against `KNOWN_TOOLS`, and
+  returns a JSON envelope `{tool, exit_code, success, elapsed_ms, stdout,
+  stderr}` with a per-call timeout. This is the "client executes" half; the
+  server can now steer any tool the client reports.
+- **Server** (`src/server/backup.rs`): `forward_tool_call` validates the tool is
+  present in the client's *inventory*, forwards the call to the client's
+  `/api/tools/:tool`, and returns the result (or 502). AppState holds a shared
+  `reqwest::Client` (also used by the discovery loop now).
+- Higher layer (build a `BackupStrategy` → sequence of `ToolCall`s from an
+  inventory + backup policy) is the **next** open chunk: ZFS via
+  `sanoid`/`syncoid` (retention + replication), btrfs via `send`/`receive`,
+  ext4/xfs via `rsync`/`restic`.
+
+Tests added (`cargo test` green, 4/4): router integration for the client tool
+route and the server forwarding path (`unknown_client_returns_404`,
+`missing_tool_in_inventory_returns_400`, `availability_checks_inventory`).
 
 ### 2. Client model — DONE (2026-10-17)
 Implemented **self-registration** (client calls the server), keeping the static
@@ -170,9 +185,11 @@ Commit (locally, per the KB rules — Niklas pushes). Decide what to track: the
 worker builds cleanly, so a first commit is straightforward.
 
 ### 4. Add tests
-None exist (`#[test]` is absent everywhere). `client/mod.rs` references tests
-that don't exist. Worth at least: `inventory` serialization, `slug()`,
-`strategy_for`, `host_tools_ready`, and router integration tests for both roles.
+Done in part. Router integration tests for both roles exist for the data plane
+(`src/client/toolapi.rs`, `src/server/backup.rs`, 4/4 green). Remaining worth-
+do-its: `inventory` serialization, `slug()`, `host_tools_ready`, and router
+integration tests for the server control-plane routes. `#3` (version control) is
+done — public at https://github.com/handtrixx/parasanoid.
 
 ### 4b. Remove Next.js — DONE (2026-10-16)
 Per the Decisions section, `ui/` was deleted and **`compose.yaml` was repointed**
