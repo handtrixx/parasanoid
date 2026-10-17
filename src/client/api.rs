@@ -6,10 +6,9 @@
 //!   * `GET  /api/inventory`   — the latest host inventory
 //!   * `GET  /api/status`      — worker self-description (role, version, tools)
 //!   * `POST /api/scan`        — force a fresh host scan (server-driven)
-//!
-//! The data plane (snapshot + stream host data to the server) is intentionally
-//! *not* implemented yet: it returns `501` with a clear marker so the control
-//! surface exists without pretending to work. See `TODO(data-plane)`.
+//!   * `POST /api/tools/:tool` — run a detected tool with given args (see
+//!     `toolapi`); the server forwards its backup plan here. This is the data
+//!     plane — execution stays on this host, the server only orchestrates.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -50,19 +49,6 @@ pub async fn refresh(State(state): State<AppState>) -> Response {
         };
     }
     Json(serde_json::to_value(&inventory).expect("inventory serializes")).into_response()
-}
-
-/// Placeholder for the data plane. Implementing snapshot/stream here means the
-/// client role starts doing real backup work — which the design keeps on the
-/// server. Until then, refuse politely.
-pub async fn not_implemented() -> Response {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({
-            "error": "data plane (snapshot + stream) not implemented yet",
-        })),
-    )
-        .into_response()
 }
 
 /// Generic JSON error response.

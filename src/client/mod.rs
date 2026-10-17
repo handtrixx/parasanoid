@@ -14,6 +14,7 @@ pub mod fs;
 pub mod heartbeat;
 pub mod host;
 pub mod scan;
+pub mod toolapi;
 pub mod tools;
 
 use std::sync::Arc;
@@ -106,8 +107,9 @@ pub async fn run(version: &str) -> anyhow::Result<()> {
         .route("/api/inventory", get(api::inventory))
         .route("/api/status", get(api::status))
         .route("/api/scan", post(api::refresh))
-        .route("/api/backup/streams", get(api::not_implemented))
-        .route("/api/backup/snapshots", post(api::not_implemented))
+        // Data plane: the server forwards backup tool calls here, e.g.
+        // `POST /api/tools/syncoid` with `{ "args": ["src", "dst"] }`.
+        .route("/api/tools/:tool", post(toolapi::run_tool))
         .with_state(state);
 
     // Self-registration runs in the background and never blocks the API. It is
@@ -131,8 +133,9 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/api/inventory", get(api::inventory))
         .route("/api/status", get(api::status))
         .route("/api/scan", post(api::refresh))
-        .route("/api/backup/streams", get(api::not_implemented))
-        .route("/api/backup/snapshots", post(api::not_implemented))
+        // Data plane: the server forwards backup tool calls here, e.g.
+        // `POST /api/tools/syncoid` with `{ "args": ["src", "dst"] }`.
+        .route("/api/tools/:tool", post(toolapi::run_tool))
         .with_state(state)
 }
 

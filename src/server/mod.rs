@@ -6,6 +6,7 @@
 //! `/api/*` endpoints (see `crate::client`); this module talks to them.
 
 mod api;
+pub mod backup;
 pub mod config;
 pub mod discovery;
 pub mod state;
@@ -32,6 +33,10 @@ pub async fn run() -> anyhow::Result<()> {
     info!(listen = %cfg.listen, "parasanoid-worker (server) starting");
 
     let reg = Registry::new();
+    // A single shared HTTP client for both the data plane (server -> client)
+    // and the discovery loop (client inventory polls). reqwest::Client is a
+    // cheap Arc clone to hand out.
+    let http = reqwest::Client::new();
 
     // Seed the static fallback list so air-gapped clients still show up in the
     // UI even when they cannot reach the server to self-register.
@@ -48,14 +53,30 @@ pub async fn run() -> anyhow::Result<()> {
         .route("/api/discovery/clients", get(api::clients))
         .route("/api/discovery/clients/:id", get(api::client_detail))
         .route("/api/discovery/clients/:id/inventory", get(api::inventory))
-        .with_state(api::AppState { reg: reg.clone() });
+        // Data plane: the server forwards a backup tool call to this client,
+        // which then runs the tool on its own host, e.g.
+        // `POST /api/discovery/clients/:id/tools/:tool`.
+        .route(
+            "/api/discovery/clients/:id/tools/:tool",
+            post(backup::forward_tool_call),
+        )
+        .with_state(api::AppState {
+            reg: reg.clone(),
+            http: http.clone(),
+        });
 
     // Discovery loop runs in the background and self-limits to the clients it
     // actually knows about, so it is safe to start unconditionally.
     let interval = Duration::from_secs(cfg.poll_interval_secs);
     let stale_after = Duration::from_secs(cfg.stale_after_secs);
     let clients = cfg.clients.clone();
-    tokio::spawn(discovery::run(reg, interval, clients, stale_after));
+    tokio::spawn(discovery::run(
+        reg,
+        http.clone(),
+        interval,
+        clients,
+        stale_after,
+    ));
 
     let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
     info!(listen = %cfg.listen, "listening (server API)");

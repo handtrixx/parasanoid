@@ -14,7 +14,6 @@ use crate::server::state::Registry;
 /// A client to probe during one poll cycle.
 struct ProbeTarget {
     id: String,
-    name: String,
     url: String,
 }
 
@@ -24,7 +23,13 @@ struct ProbeTarget {
 /// presence goes quiet. Registered clients refresh `last_seen` on each poll
 /// (and on each heartbeat), so a client that has gone away is pruned once it
 /// stops responding for longer than `stale_after`.
-pub async fn run(reg: Registry, interval: Duration, clients: Vec<String>, stale_after: Duration) {
+pub async fn run(
+    reg: Registry,
+    http: reqwest::Client,
+    interval: Duration,
+    clients: Vec<String>,
+    stale_after: Duration,
+) {
     info!(
         interval_secs = interval.as_secs(),
         stale_after_secs = stale_after.as_secs(),
@@ -32,7 +37,7 @@ pub async fn run(reg: Registry, interval: Duration, clients: Vec<String>, stale_
     );
     loop {
         prune_stale(&reg, stale_after).await;
-        poll_once(&reg, &clients).await;
+        poll_once(&reg, &http, &clients).await;
         tokio::time::sleep(interval).await;
     }
 }
@@ -43,12 +48,12 @@ async fn prune_stale(reg: &Registry, stale_after: Duration) {
     reg.prune_stale(cutoff).await;
 }
 
-async fn poll_once(reg: &Registry, clients: &[String]) {
+async fn poll_once(reg: &Registry, http: &reqwest::Client, clients: &[String]) {
     let targets = build_targets(reg, clients).await;
     info!(count = targets.len(), "polling clients");
 
     for target in targets {
-        probe_target(reg, target).await;
+        probe_target(reg, http, target).await;
     }
 }
 
@@ -61,7 +66,6 @@ async fn build_targets(reg: &Registry, clients: &[String]) -> Vec<ProbeTarget> {
         if seen.insert(rec.url.clone()) {
             out.push(ProbeTarget {
                 id: rec.id,
-                name: rec.name,
                 url: rec.url,
             });
         }
@@ -71,7 +75,6 @@ async fn build_targets(reg: &Registry, clients: &[String]) -> Vec<ProbeTarget> {
         if seen.insert(url.clone()) {
             out.push(ProbeTarget {
                 id: slug(url),
-                name: slug(url),
                 url: url.clone(),
             });
         }
@@ -80,23 +83,12 @@ async fn build_targets(reg: &Registry, clients: &[String]) -> Vec<ProbeTarget> {
     out
 }
 
-async fn probe_target(reg: &Registry, target: ProbeTarget) {
+async fn probe_target(reg: &Registry, http: &reqwest::Client, target: ProbeTarget) {
     let base = target.url.trim_end_matches('/');
     let health_url = format!("{base}/api/health");
     let inv_url = format!("{base}/api/inventory");
 
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(url = %target.url, error = %e, "failed to build http client");
-            return;
-        }
-    };
-
-    let alive = match client.get(&health_url).send().await {
+    let alive = match http.get(&health_url).send().await {
         Ok(resp) => resp.status().is_success(),
         Err(e) => {
             warn!(url = %target.url, error = %e, "client unreachable");
@@ -112,7 +104,7 @@ async fn probe_target(reg: &Registry, target: ProbeTarget) {
     reg.touch(&target.id, Utc::now()).await;
 
     // Fetch inventory (best effort — a transient failure shouldn't drop the client).
-    match client.get(&inv_url).send().await {
+    match http.get(&inv_url).send().await {
         Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
             Ok(value) => {
                 reg.set_inventory(&target.id, value).await;

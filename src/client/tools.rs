@@ -10,8 +10,9 @@ use std::process::Command;
 
 use crate::inventory::DetectedTool;
 
-/// The tools paranoid is interested in.
-const KNOWN_TOOLS: &[&str] = &[
+/// The tools paranoid is interested in. Public so the tool-invocation API can
+/// validate tool names before spawning anything.
+pub const KNOWN_TOOLS: &[&str] = &[
     "rsync", "sanoid", "syncoid", "zfs", "zpool", "btrfs", "restic",
 ];
 

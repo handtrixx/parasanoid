@@ -19,6 +19,8 @@ use crate::server::state::Registry;
 #[derive(Clone)]
 pub struct AppState {
     pub reg: Registry,
+    /// Shared HTTP client for dialing out to clients (data plane + discovery).
+    pub http: reqwest::Client,
 }
 
 #[derive(Serialize)]
