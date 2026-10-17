@@ -62,10 +62,13 @@ Client endpoints (`src/client/mod.rs`): `GET /api/health`, `/api/inventory`, `/a
 
 ## Current state — M2 (server-owned policy + plan builder + executor)
 
-**Done & verified.** `cargo test` → **9 passed, 0 failed**. `cargo clippy` → **4
-pre-existing warnings** (`one_shot_inventory`, `router`, `json_error` dead-code +
-1 clamp-style lint); no new warnings. Published: commit `d5d4500` (also
-`origin/master`).
+**Done & verified.** `cargo test` → **12 passed, 0 failed** (was 9; added
+`ensure_dest_parent_*` x2 and the prune-`keep` regression test). Release build is
+clean with **3** warnings (down from 4: the clamp-style lint is now gone); the
+3 remaining are pre-existing dead-code (`one_shot_inventory`, `router`,
+`json_error`). Published: commits `d5d4500` (M2, also `origin/master`) and
+`a5fee39` (docs/examples), `9a59b10` (this session's bug fixes — **local, not
+pushed**; Niklas pushes).
 
 M2 implementation (`d5d4500`, 747 lines): server owns the policy + executor;
 every data-touching tool still runs on the client.
@@ -83,6 +86,25 @@ every data-touching tool still runs on the client.
   `retention_is_modelled_as_a_count` tests cover this.
 - **Client side** (`client/plan.rs`): the server asks the client to list/prune
   `dest/<ts>/` snapshots so it can model hardlink retention.
+
+**E2E bug fixes landed 2026-10-17 (commit `9a59b10`, local only):**
+
+1. `server/plan.rs::latest_snapshot` returned only the ts name, so `--link-dest`
+   was relative and rsync looked in the wrong place → hardlinks silently broken.
+   Now returns the full `dest/<ts>` path.
+2. `server/plan.rs::build_sync_plan` passed the source without a trailing slash,
+   so rsync nested `<base>/<base>` and exit-11'd on first run. Now normalized to
+   `src + "/"` (contents copy). See `ensure_dest_parent` in `client/toolapi.rs`.
+3. `server/plan.rs::prune_snapshots` sent `keep` in the JSON body, but the
+   client reads it from `Query<DestParam>` → defaulted to `0` → clamped to `1` →
+   retention collapsed to "keep newest only". Now sent in the query string.
+4. `server/plan.rs::run_policy` already fixed the previous session: `succeeded`
+   is now set `false` when a step actually fails (was only set on pre-execution
+   rejection → run reported `succeeded:true` while all steps failed).
+
+All four verified in a real local dual-role run: 2nd run shares inodes with the
+1st (hardlinks work), no nested `<base>/<base>`, and 3 snapshots kept with
+retention=3. Regression test: `client/plan.rs::prune_keeps_requested_count_from_query`.
 
 ---
 
@@ -113,17 +135,26 @@ executor path is valid.
 
 ## Next (ordered)
 
-1. Rebuild + relaunch the release client on `:9100`, re-poll, confirm `tools` is
-   an array. (Resolves the blocker above.)
-2. End-to-end: `GET http://127.0.0.1:8080/api/backup/run` → rsync runs on the
-   client; snapshots at `/tmp/parasanoid-demo/backups/<ts>/sample-data/`; 2nd run
-   hardlinks (inodes unchanged); prune honors retention.
-3. Commit example files (`examples/` — currently untracked) + runtime policy
-   (`/tmp`, **not** committed).
-4. Update `ROADMAP.md` (mark M2 done; policies = server-side; first scenario =
-   local dual-role run).
+1. ~~Rebuild + relaunch the release client on `:9100`, re-poll, confirm `tools`~~
+   ✅ done (blocker resolved).
+2. ~~End-to-end local dual-role run: snapshots at
+   `/tmp/parasanoid-demo/backups/<ts>/sample-data/`, 2nd run hardlinks (inodes
+   unchanged), prune honors retention.~~ ✅ done 2026-10-17 (`9a59b10`).
+3. ~~Commit example files (`examples/`) + runtime policy (`/tmp`, not committed).~~
+   ✅ done (`a5fee39`).
+4. ~~Update `ROADMAP.md` (mark M2 done) + THIS file.~~ ✅ done (this session).
 5. Fix stale/contradictory `docs/PROJECT-NOTES.md` (§2 still claims no
    self-registration code and lists it as an open decision — it's implemented).
+   ⏭️ **next** — out of scope for the e2e pass. `docs/PROJECT-NOTES.md` is the
+   known-stale doc; leave it unless Niklas asks.
+
+## Sandbox networking gotcha (important)
+
+Binding a listener to `:8080` / `:9100` fails with
+"failed to lookup address information" in this sandbox. **Bind to `127.0.0.1`
+(`127.0.0.1:8080` / `127.0.0.1:9100`) instead** — loopback binds fine. Config is
+**env-only** (`PARASANOID_*`); `--server`/`--client` select the role, every other
+flag is ignored. No Rust on PATH by default (`export PATH="$HOME/.cargo/bin:$PATH"`).
 
 ## Open questions (decisions)
 - Policy storage: **server-side** (`PARASANOID_POLICY_FILE`, JSON). ✅ decided.

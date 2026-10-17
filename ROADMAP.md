@@ -55,24 +55,38 @@ The server can now call **any tool the client reports**, availability-checked.
   `AppState`.
 - Router integration tests cover both roles (`cargo test`, 4/4).
 
-### M2 — Backup policy → plan builder  ⏭️  _(next)_
+### M2 — Backup policy → plan builder  ✅  _(2026-10-17)_
 
-The missing half: **what** to back up, **where**, and **with what retention**,
-turned into an executable sequence.
+Server owns **what** to back up, **where**, and **with what retention**, and turns
+that into an executable sequence. Data still runs on the client.
 
-1. **Policy model** — decide the source of truth for policies:
-   - a config file the server loads (YAML/JSON), or
-   - per-client entries created over the API.
-2. **Plan builder** (`src/server/plan.rs`) — inventory + policy → ordered
-   `Vec<ToolCall>`. Maps each `DetectedFs` to its `BackupStrategy` and expands
-   sources into tool invocations.
-3. **Executor** — walk the plan, forward each `ToolCall` via the existing
-   `forward_tool_call`, record per-step success/failure and durations.
+1. **Policy** (`server/plan.rs`): `PolicySet { entries: Vec<PolicyEntry> }`,
+   `PolicyEntry { client_id, sources, destination, retention, timeout_secs }`,
+   loaded from `PARASANOID_POLICY_FILE` (server-side JSON — the decided source of
+   truth). Empty file ⇒ scheduler disabled.
+2. **Plan builder** (`build_sync_plan`): policy → ordered `Vec<ToolCall>`. Each
+   source becomes one rsync call under `dest/<ts>/<basename(source)>/`.
+3. **Executor** (`run_policy`): walks the plan, forwards each call via
+   `forward_tool`, records per-step results (exit code, success, duration) in a
+   `RunStore`; marks the run failed if any step fails or is rejected pre-execution.
+4. **Hardlink retention** (rsnapshot-style): unchanged files on run N+1 are
+   hardlinked against run N via `rsync --link-dest`; retention is a **count**.
 
-**Open questions (need a decision before coding):**
-- Policy source: file vs. API?
-- Start with the simplest strategy (rsync for ext4/xfs) or jump to ZFS
-  (sanoid/syncoid retention + replication)?
+**E2E-verified bug fixes (this lands the milestone):**
+
+- `--link-dest` must be the **full** `dest/<ts>` path, not the bare ts name: the
+  client returns only the ts, but rsync resolves `--link-dest` relative to the
+  **new** snapshot's destination, so a bare name pointed at the wrong place and
+  hardlinks silently failed. Fixed in `latest_snapshot` (returns `dest/<ts>`).
+- Source args need a **trailing slash**: rsync copies the directory *contents*
+  into `dest/<ts>/<base>` instead of nesting `<base>/<base>` (which also broke
+  hardlinking by nesting one level too deep).
+- `prune_snapshots` sends `keep` in the **query string** — the client reads it
+  from `Query<DestParam>`. It used to be in the JSON body, where it parsed to its
+  default `0` → clamped to `1`, collapsing retention to "keep newest only".
+
+**Decisions (closed):** policy source = server-side JSON file; first strategy =
+rsync for ext4/xfs; hardlink (not bare copy) retention. Closed 2026-10-17.
 
 ### M3 — ZFS strategy  ⏸️
 
