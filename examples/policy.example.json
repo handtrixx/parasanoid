@@ -1,0 +1,18 @@
+{
+  "entries": [
+    {
+      "client_id": "my-laptop",
+      "sources": ["/home/user/projects"],
+      "destination": "/media/backup/storage",
+      "retention": 7,
+      "timeout_secs": 3600
+    },
+    {
+      "client_id": "my-laptop",
+      "sources": ["/home/user/photos"],
+      "destination": "/media/backup/storage",
+      "retention": 4,
+      "timeout_secs": 7200
+    }
+  ]
+}

@@ -79,6 +79,14 @@ plain argv vector (never through a shell).
   discovery/inventory view but is still **scaffolding** — no control plane and not
   yet wired into `compose.yaml`.
 
+## Working on this project
+
+When developing `parasanoid`, read **`AGENT_STATE.md`** first — it holds the
+`src/` architecture map plus the current session's focus, last changes, and next
+steps, so orientation doesn't require re-reading the source. Update it at each
+checkpoint; it is agent continuity state (committed to the repo, secrets kept
+out).
+
 ## Roadmap
 
 See `ROADMAP.md` for the live, prioritized plan (M0 foundations → M1 data plane →
