@@ -66,9 +66,9 @@ Client endpoints (`src/client/mod.rs`): `GET /api/health`, `/api/inventory`, `/a
 `ensure_dest_parent_*` x2 and the prune-`keep` regression test). Release build is
 clean with **3** warnings (down from 4: the clamp-style lint is now gone); the
 3 remaining are pre-existing dead-code (`one_shot_inventory`, `router`,
-`json_error`). Published: commits `d5d4500` (M2, also `origin/master`) and
-`a5fee39` (docs/examples), `9a59b10` (this session's bug fixes — **local, not
-pushed**; Niklas pushes).
+`json_error`). Published (on `origin/master`): `d5d4500` (M2), `a5fee39` (docs/examples),
+`9a59b10` (this session's bug fixes), plus `9e859d3` (this doc pass). All four
+were pushed on request 2026-10-17.
 
 M2 implementation (`d5d4500`, 747 lines): server owns the policy + executor;
 every data-touching tool still runs on the client.
@@ -87,7 +87,7 @@ every data-touching tool still runs on the client.
 - **Client side** (`client/plan.rs`): the server asks the client to list/prune
   `dest/<ts>/` snapshots so it can model hardlink retention.
 
-**E2E bug fixes landed 2026-10-17 (commit `9a59b10`, local only):**
+**E2E bug fixes landed 2026-10-17 (commit `9a59b10`, pushed):
 
 1. `server/plan.rs::latest_snapshot` returned only the ts name, so `--link-dest`
    was relative and rsync looked in the wrong place → hardlinks silently broken.
