@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 authors = ["Niklas <niklas@handtrixxx.com>"]
-repository = "https://git.handtrixxx.com/parasanoid/parasanoid.git"
+repository = "https://github.com/handtrixx/parasanoid"
 description = "Single dual-role worker: a server brain and a host-scanning API bridge."
 
 [[bin]]
