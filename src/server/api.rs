@@ -10,7 +10,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde::Deserialize;
 use serde::Serialize;
+use tracing::info;
 
 use crate::server::state::Registry;
 
@@ -51,6 +53,53 @@ impl ClientSummary {
 
 pub async fn health() -> Response {
     Json(serde_json::json!({ "status": "ok" })).into_response()
+}
+
+/// Registration payload a client POSTs to announce itself to the server.
+///
+/// Only `client_id` and `published_url` are used by the server; any other
+/// fields a client sends (e.g. a worker self-description) are ignored, so the
+/// server struct intentionally does not model them.
+#[derive(Debug, Deserialize)]
+pub struct Registration {
+    /// Stable client id / friendly name (also used as the display name).
+    pub client_id: String,
+    /// Where the server can reach this client (its published address).
+    pub published_url: String,
+}
+
+/// A client announces itself so the server can reach it without a static list.
+///
+/// Called once on client startup and periodically thereafter (the heartbeat).
+/// The server upserts the client keyed by `client_id`, using `published_url` as
+/// the address its discovery loop polls. Rejects a registration missing either
+/// field rather than inserting a half-formed record.
+pub async fn register(State(state): State<AppState>, Json(reg): Json<Registration>) -> Response {
+    if reg.client_id.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "client_id is required" })),
+        )
+            .into_response();
+    }
+    if reg.published_url.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "published_url is required" })),
+        )
+            .into_response();
+    }
+
+    info!(id = %reg.client_id, url = %reg.published_url, "client registered");
+    state
+        .reg
+        .register(&reg.client_id, &reg.client_id, &reg.published_url)
+        .await;
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "status": "registered", "id": reg.client_id })),
+    )
+        .into_response()
 }
 
 pub async fn clients(State(state): State<AppState>) -> Response {

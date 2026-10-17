@@ -9,6 +9,9 @@
 #   * PARASANOID_SERVER_URL   -> where the server is reachable from this host
 #   * PARASANOID_PUBLISHED_URL -> where the server can reach THIS client
 #   * PARASANOID_CLIENT_ID    -> friendly name shown in the UI
+#   * PARASANOID_HEARTBEAT_INTERVAL -> seconds between registration pings
+#                                    (default 10; set low if the server prunes
+#                                    quickly via PARASANOID_STALE_AFTER)
 
 services:
   parasanoid-client:
@@ -22,6 +25,9 @@ services:
       PARASANOID_SERVER_URL: http://server.example.com:8080
       PARASANOID_PUBLISHED_URL: http://<this-host>:9100
       PARASANOID_CLIENT_ID: <target-name>
+      # Seconds between self-registration pings to the server (default 10).
+      # Lower this if you also set a low PARASANOID_STALE_AFTER on the server.
+      # PARASANOID_HEARTBEAT_INTERVAL: "10"
       RUST_LOG: info
     volumes:
       # Expose host ZFS state + device access to the privileged container.

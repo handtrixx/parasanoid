@@ -7,6 +7,10 @@
 `parasanoid` is a **centralized ZFS / btrfs / rsync backup manager**. A single
 Rust binary, `parasanoid-worker`, runs in one of two roles chosen explicitly:
 
+> 2026-10-17: the code has moved beyond this inspection-only writeup. The client
+> model is now implemented (see item 2 below), with new env vars and a
+> self-registration path. This file still reflects the original inspection.
+
 - **server** — the "brain" (storage box). JSON API for the UI + a discovery loop
   that dials out to clients on the LAN and pulls their host inventory.
 - **client** — a "dumb bridge" on each backup target. Scans the host and answers
@@ -78,8 +82,15 @@ two stay in lock-step: `ClientInventory`, `HostInfo`, `DetectedFs` (+
 Env vars in use:
 - Both: `PARASANOID_ROLE` (role).
 - Server: `PARASANOID_LISTEN` (`:8080`), `PARASANOID_POLL_INTERVAL` (`10`),
-  `PARASANOID_CLIENTS` (comma-sep static fallback list, air-gapped clients).
-- Client: `PARASANOID_CLIENT_ID`, `PARASANOID_LISTEN` (`:9100`).
+  `PARASANOID_STALE_AFTER` (secs a client stays registered after going quiet;
+  default `max(POLL_INTERVAL*3, 30)`; registered clients refresh on each poll,
+  static fallbacks are never pruned), `PARASANOID_CLIENTS` (comma-sep static
+  fallback list, air-gapped clients that cannot self-register).
+- Client: `PARASANOID_CLIENT_ID`, `PARASANOID_LISTEN` (`:9100`),
+  `PARASANOID_SERVER_URL` (where the server is, for self-registration),
+  `PARASANOID_PUBLISHED_URL` (where the server can reach this client; defaults
+  to the local `LISTEN` address), `PARASANOID_HEARTBEAT_INTERVAL` (secs between
+  registration pings; default `10`).
 - ui-rust only: `PARASANOID_SERVER_URL` (`http://localhost:8080`),
   `PARASANOID_UI_LISTEN` (`:3100`), `PARASANOID_DB_PATH` (`./ui-rust/data.db`).
 
@@ -130,14 +141,27 @@ real value is: given an inventory, execute the matching `BackupStrategy` —
 ZFS via `sanoid`/`syncoid` (retention + replication), btrfs via `send`/`receive`,
 ext4/xfs via `rsync`/`restic`. This is the big open chunk of work.
 
-### 2. Finish (or drop) the client model — self-registration vs static list
-`docker/client.compose.yaml` sets `PARASANOID_SERVER_URL` and
-`PARASANOID_PUBLISHED_URL` and its comment says the client "self-registers with
-the server." **Neither env var is read by `src/`, and there is no self-registration
-code** — the server instead dials a static `PARASANOID_CLIENTS` list and seeds it
-as a fallback. The compose doc and the code contradict each other. Decide one:
-- self-registration (client calls server on boot), or
-- finalize the server-dials-static-list model and remove the dead env vars/docs.
+### 2. Client model — DONE (2026-10-17)
+Implemented **self-registration** (client calls the server), keeping the static
+`PARASANOID_CLIENTS` list only as an air-gapped fallback.
+
+- Client learns the server via `PARASANOID_SERVER_URL` and announces itself via
+  `PARASANOID_PUBLISHED_URL` (defaults to the local `LISTEN` address), then
+  POSTs `PARASANOID_HEARTBEAT_INTERVAL` seconds to `/api/discovery/register`
+  on boot and periodically (`src/client/heartbeat.rs`). Failures are logged,
+  never fatal; the client keeps serving its inventory locally either way.
+- Server upserts the client keyed by `client_id`, preserving `created_at`/
+  `up_since` across heartbeats and refreshing `last_seen` (`state.rs`). A
+  discovery-loop pass prunes clients silent for longer than
+  `PARASANOID_STALE_AFTER` (`discovery.rs`).
+- Static-list fallbacks are seeded by the server and **never pruned** (they have
+  no `last_seen`) — they appear in the UI even without a working LAN.
+
+Env vars are read by `src/` and documented in both compose files, so the
+contradiction noted at inspection is resolved. `docker/client.compose.yaml`
+already documents `PARASANOID_SERVER_URL`/`PUBLISHED_URL`; the server compose now
+documents `PARASANOID_STALE_AFTER` and the client compose documents
+`PARASANOID_HEARTBEAT_INTERVAL`.
 
 ### 3. Version-control the project
 Not a git repo yet, despite `Cargo.toml` referencing

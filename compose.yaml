@@ -15,6 +15,10 @@ services:
     environment:
       PARASANOID_LISTEN: :8080
       PARASANOID_POLL_INTERVAL: "10"
+      # Seconds a client stays registered after its last poll/heartbeat goes
+      # silent (default: max(POLL_INTERVAL * 3, 30)). Registered clients
+      # refresh each poll; static fallbacks below are never pruned.
+      # PARASANOID_STALE_AFTER: "30"
       # Optional static fallback list (comma-separated) for air-gapped clients
       # that cannot self-register, e.g. http://host1:9100,http://host2:9100
       # PARASANOID_CLIENTS: ""

@@ -12,7 +12,7 @@ pub mod state;
 
 use std::time::Duration;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use tracing::{info, Level};
 
@@ -34,7 +34,7 @@ pub async fn run() -> anyhow::Result<()> {
     let reg = Registry::new();
 
     // Seed the static fallback list so air-gapped clients still show up in the
-    // UI before the first successful poll. Self-registration is a future hardening.
+    // UI even when they cannot reach the server to self-register.
     for url in &cfg.clients {
         reg.seed_static(url).await;
         info!(%url, "seeded static fallback client");
@@ -42,6 +42,9 @@ pub async fn run() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/api/health", get(api::health))
+        // Clients POST here on startup and periodically (heartbeat) so the
+        // server can reach them without a preconfigured static client list.
+        .route("/api/discovery/register", post(api::register))
         .route("/api/discovery/clients", get(api::clients))
         .route("/api/discovery/clients/:id", get(api::client_detail))
         .route("/api/discovery/clients/:id/inventory", get(api::inventory))
@@ -50,8 +53,9 @@ pub async fn run() -> anyhow::Result<()> {
     // Discovery loop runs in the background and self-limits to the clients it
     // actually knows about, so it is safe to start unconditionally.
     let interval = Duration::from_secs(cfg.poll_interval_secs);
+    let stale_after = Duration::from_secs(cfg.stale_after_secs);
     let clients = cfg.clients.clone();
-    tokio::spawn(discovery::run(reg, interval, clients));
+    tokio::spawn(discovery::run(reg, interval, clients, stale_after));
 
     let listener = tokio::net::TcpListener::bind(&cfg.listen).await?;
     info!(listen = %cfg.listen, "listening (server API)");

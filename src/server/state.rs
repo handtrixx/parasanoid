@@ -39,6 +39,52 @@ impl Registry {
         self.inner.write().await.insert(rec.id.clone(), rec);
     }
 
+    /// Register (or re-register) a client that self-registered over the LAN.
+    ///
+    /// `id` is the client's stable id / friendly name; `url` is where the
+    /// server can reach this client (its published address). Upserts by id,
+    /// preserving `created_at` / `up_since` across heartbeats and refreshing
+    /// `last_seen` so dead clients can later be pruned.
+    pub async fn register(&self, id: &str, name: &str, url: &str) {
+        let now = Utc::now();
+        let mut inner = self.inner.write().await;
+        let (created_at, up_since) = inner
+            .get(id)
+            .map(|r| (r.created_at, r.up_since))
+            .unwrap_or((now, Some(now)));
+        let last_inventory = inner.get(id).and_then(|r| r.last_inventory.clone());
+        inner.insert(
+            id.to_string(),
+            ClientRecord {
+                id: id.to_string(),
+                name: name.to_string(),
+                url: url.to_string(),
+                up_since,
+                created_at,
+                last_seen: Some(now),
+                last_inventory,
+            },
+        );
+    }
+
+    /// Drop clients whose presence hasn't been refreshed since `cutoff`.
+    ///
+    /// Registered clients refresh `last_seen` via heartbeat or poll; once a
+    /// client goes silent for longer than `cutoff` it is pruned so the UI does
+    /// keep showing a machine that has gone away. Clients with no `last_seen`
+    /// (static-list fallbacks that were never polled) are intentionally kept.
+    pub async fn prune_stale(&self, cutoff: DateTime<Utc>) {
+        let mut inner = self.inner.write().await;
+        let dead: Vec<String> = inner
+            .iter()
+            .filter(|(_, r)| r.last_seen.is_some_and(|ls| ls < cutoff))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in dead {
+            inner.remove(&id);
+        }
+    }
+
     /// Seed a static fallback client (no self-registration) so it appears even
     /// before the first successful poll.
     pub async fn seed_static(&self, url: &str) {

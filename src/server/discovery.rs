@@ -19,12 +19,28 @@ struct ProbeTarget {
 }
 
 /// Run the discovery loop until the process is terminated.
-pub async fn run(reg: Registry, interval: Duration, clients: Vec<String>) {
-    info!(interval_secs = interval.as_secs(), "discovery loop started");
+///
+/// `stale_after` bounds how long a client stays in the registry after its
+/// presence goes quiet. Registered clients refresh `last_seen` on each poll
+/// (and on each heartbeat), so a client that has gone away is pruned once it
+/// stops responding for longer than `stale_after`.
+pub async fn run(reg: Registry, interval: Duration, clients: Vec<String>, stale_after: Duration) {
+    info!(
+        interval_secs = interval.as_secs(),
+        stale_after_secs = stale_after.as_secs(),
+        "discovery loop started"
+    );
     loop {
+        prune_stale(&reg, stale_after).await;
         poll_once(&reg, &clients).await;
         tokio::time::sleep(interval).await;
     }
+}
+
+/// Drop clients whose presence hasn't been refreshed within `stale_after`.
+async fn prune_stale(reg: &Registry, stale_after: Duration) {
+    let cutoff = Utc::now() - chrono::TimeDelta::seconds(stale_after.as_secs() as i64);
+    reg.prune_stale(cutoff).await;
 }
 
 async fn poll_once(reg: &Registry, clients: &[String]) {
