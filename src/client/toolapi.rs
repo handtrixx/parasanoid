@@ -79,6 +79,14 @@ pub async fn run_tool(
 async fn run(tool: &str, args: &[String]) -> Response {
     let start = Instant::now();
 
+    // rsync doesn't create intermediate parent directories on the receiver
+    // side, so a first-run destination like `/dest/<ts>/<base>` fails with exit
+    // code 11 unless `/dest/<ts>` already exists. Create it here, on this host —
+    // the destination lives on the client, which is where the data-plane runs.
+    if tool == "rsync" {
+        ensure_dest_parent(args);
+    }
+
     let output = match tokio::process::Command::new(tool).args(args).output().await {
         Ok(o) => o,
         Err(e) => {
@@ -104,8 +112,27 @@ async fn run(tool: &str, args: &[String]) -> Response {
     .into_response()
 }
 
+/// If the tool's destination (last argv element) is a path, ensure its parent
+/// directory exists on this host. rsync won't create the parents itself, so the
+/// first snapshot under `/dest/<ts>/...` needs `/dest/<ts>` to be pre-created.
+/// `create_dir_all` is a no-op when the path already exists.
+fn ensure_dest_parent(args: &[String]) {
+    let Some(dest) = args.last() else {
+        return;
+    };
+    if !dest.contains('/') {
+        return;
+    }
+    if let Some(parent) = std::path::Path::new(dest).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::ensure_dest_parent;
     use crate::client::router;
     use crate::client::scan;
     use crate::client::AppState;
@@ -129,6 +156,33 @@ mod tests {
     // `echo` is not a KNOWN_TOOL, so the route must reject it before spawning
     // anything. This exercises route matching + the name check without touching
     // real host tooling.
+    #[test]
+    fn ensure_dest_parent_creates_missing_parent() {
+        let tmp = std::env::temp_dir()
+            .join(format!("parasanoid-test-{}", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(&tmp);
+
+        // Parent `/dest/<ts>` does not exist yet; only the leaf is in argv.
+        let dest = format!("{tmp}/20261017-102015/sample-data");
+        let src = "/home/user/projects".to_string();
+        let args: Vec<String> = vec!["-a".into(), "--delete".into(), src.clone(), dest.clone()];
+        ensure_dest_parent(&args);
+
+        let snap_parent = format!("{}/20261017-102015", tmp);
+        assert!(std::path::Path::new(&snap_parent).exists());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn ensure_dest_parent_ignores_non_path_last_arg() {
+        // No `/` in the last arg -> treat as a non-path tool arg, don't mkdir.
+        let args: Vec<String> = vec!["--flag".into(), "value".into()];
+        ensure_dest_parent(&args);
+    }
+
     #[tokio::test]
     async fn unknown_tool_is_rejected() {
         let app = router(test_state());

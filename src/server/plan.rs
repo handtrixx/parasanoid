@@ -174,7 +174,11 @@ pub fn build_sync_plan(
                 args.push("--link-dest".into());
                 args.push(ld);
             }
-            args.push(src.clone());
+            // Trailing slash on the source: rsync copies the *contents* of the
+            // directory into the destination (`<ts>/<base>`), not a nested copy
+            // at `<ts>/<base>/<base>`. It also lets `--link-dest` see the
+            // previous contents, which is what makes the hardlinks work.
+            args.push(format!("{}/", src.trim_end_matches('/')));
             args.push(dest);
 
             ToolCall {
@@ -236,7 +240,19 @@ pub async fn run_policy(state: &AppState, entry: &PolicyEntry) -> Option<(String
 
     for call in &plan {
         match state.forward_tool(&rec.id, "rsync", call).await {
-            Ok(body) => steps.push(parse_step(call, &body)),
+            Ok(body) => {
+                let step = parse_step(call, &body);
+                if !step.success {
+                    succeeded = false;
+                    warn!(
+                        client_id = %entry.client_id,
+                        tool = %step.tool,
+                        exit_code = ?step.exit_code,
+                        "backup step failed",
+                    );
+                }
+                steps.push(step);
+            }
             Err(status) => {
                 succeeded = false;
                 warn!(
@@ -346,7 +362,12 @@ impl AppState {
         match req.send().await {
             Ok(resp) if resp.status().is_success() => {
                 let v = resp.json::<serde_json::Value>().await.ok()?;
-                v.get("latest").and_then(|x| x.as_str()).map(str::to_string)
+                let name = v.get("latest").and_then(|x| x.as_str());
+                // Return the full `dest/<ts>` path, not just the ts name: the
+                // caller builds an absolute `--link-dest` from it, and rsync
+                // resolves that link-dest relative to the *new* snapshot's
+                // destination, so a bare name would point at the wrong place.
+                name.map(|n| format!("{}/{}", dest.trim_end_matches('/'), n))
             }
             Ok(resp) => {
                 warn!(
@@ -377,11 +398,15 @@ impl AppState {
             .await
             .ok_or_else(|| "unknown client".to_string())?;
         let base = rec.url.trim_end_matches('/');
+        // Both `dest` and `keep` go in the query string: the client's `prune`
+        // handler reads it from `Query<DestParam>`, so `keep` would otherwise
+        // arrive only in the JSON body and deserialize to its `0` default
+        // (clamped to 1), silently collapsing retention to "keep newest only".
+        let keep_str = keep.to_string();
         let req = self
             .http
             .post(format!("{}/api/plan/prune", base))
-            .query(&[("dest", dest)])
-            .json(&serde_json::json!({ "keep": keep }));
+            .query(&[("dest", dest), ("keep", keep_str.as_str())]);
         match req.send().await {
             Ok(resp) if resp.status().is_success() => {
                 let v = resp
@@ -427,11 +452,14 @@ mod tests {
             "--delete".into(),
             "--stats".into(),
             "--human-readable".into(),
-            "/data/a".into(),
+            "/data/a/".into(),
             "/backup/20261017-120000/a".into(),
         ];
         assert_eq!(calls[0].args, expected);
-        // Trailing slash on the source is normalised away in the destination.
+        // Trailing slash on the source is normalised away in the destination,
+        // but kept on the source arg (rsync needs it). The second source is
+        // `/data/b/` -> `/<ts>/b`.
+        assert_eq!(calls[1].args[4], "/data/b/");
         assert_eq!(calls[1].args.last().unwrap(), "/backup/20261017-120000/b");
     }
 
@@ -446,7 +474,7 @@ mod tests {
             "--human-readable".into(),
             "--link-dest".into(),
             "/backup/20261017-120000/a".into(),
-            "/data/a".into(),
+            "/data/a/".into(),
             "/backup/20261017-130000/a".into(),
         ];
         assert_eq!(calls[0].args, expected);
