@@ -9,13 +9,15 @@ mod api;
 pub mod backup;
 pub mod config;
 pub mod discovery;
+pub mod plan;
 pub mod state;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::routing::{get, post};
 use axum::Router;
-use tracing::{info, Level};
+use tracing::{info, warn, Level};
 
 use crate::server::state::Registry;
 
@@ -37,6 +39,25 @@ pub async fn run() -> anyhow::Result<()> {
     // and the discovery loop (client inventory polls). reqwest::Client is a
     // cheap Arc clone to hand out.
     let http = reqwest::Client::new();
+    // In-memory backup-run history for the control plane (see `plan`).
+    let exec = plan::RunStore::new();
+    // Backup policy: what to back up, where, and retention. Loaded from the
+    // file named by PARASANOID_POLICY_FILE; empty if unset (scheduler disabled).
+    let policy = cfg
+        .policy_file
+        .as_deref()
+        .map(plan::PolicySet::load_from_file)
+        .transpose()?
+        .unwrap_or_else(|| {
+            Arc::new(plan::PolicySet {
+                entries: Vec::new(),
+            })
+        });
+    if let Some(path) = &cfg.policy_file {
+        info!(%path, "loaded backup policy");
+    } else {
+        warn!("PARASANOID_POLICY_FILE unset; backup scheduler disabled");
+    }
 
     // Seed the static fallback list so air-gapped clients still show up in the
     // UI even when they cannot reach the server to self-register.
@@ -60,9 +81,17 @@ pub async fn run() -> anyhow::Result<()> {
             "/api/discovery/clients/:id/tools/:tool",
             post(backup::forward_tool_call),
         )
+        // Backup control plane: trigger a run, list runs, inspect one run
+        // (see `plan`). Runs execute on the client; the server only records
+        // per-step results.
+        .route("/api/backup/run", get(plan::backup_run))
+        .route("/api/backup/runs", get(plan::backup_runs))
+        .route("/api/backup/run/:id", get(plan::backup_run_detail))
         .with_state(api::AppState {
             reg: reg.clone(),
             http: http.clone(),
+            exec: exec.clone(),
+            policy,
         });
 
     // Discovery loop runs in the background and self-limits to the clients it

@@ -12,8 +12,10 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::Arc;
 use tracing::info;
 
+use crate::server::plan::{PolicySet, RunStore};
 use crate::server::state::Registry;
 
 #[derive(Clone)]
@@ -21,6 +23,10 @@ pub struct AppState {
     pub reg: Registry,
     /// Shared HTTP client for dialing out to clients (data plane + discovery).
     pub http: reqwest::Client,
+    /// In-memory backup-run history (see `server::plan`).
+    pub exec: RunStore,
+    /// The loaded backup policy (see `server::plan`). Empty if no policy file.
+    pub policy: Arc<PolicySet>,
 }
 
 #[derive(Serialize)]

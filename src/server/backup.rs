@@ -11,9 +11,57 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::client::toolapi::ToolCall;
 use crate::server::api::AppState;
+
+impl AppState {
+    /// Forward a single tool call to a client and return its result body.
+    ///
+    /// This is the shared core behind both the `forward_tool_call` route and the
+    /// plan executor: look the client up in the registry, validate the tool is
+    /// present and usable in its last inventory, then POST the call to the
+    /// client's `/api/tools/:tool` route. Returns the client's JSON body on
+    /// success, or the status to answer the caller with if the call is rejected
+    /// before any network request (unknown client / tool missing in inventory).
+    pub async fn forward_tool(
+        &self,
+        client_id: &str,
+        tool: &str,
+        call: &ToolCall,
+    ) -> Result<Value, StatusCode> {
+        let rec = match self.reg.get(client_id).await {
+            Some(rec) => rec,
+            None => return Err(StatusCode::NOT_FOUND),
+        };
+
+        if let Some(inv) = &rec.last_inventory {
+            if !tool_available_in_inventory(inv, tool) {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+
+        let url = format!("{}/api/tools/{tool}", rec.url.trim_end_matches('/'));
+        match self.http.post(&url).json(call).send().await {
+            Ok(resp) if resp.status().is_success() => match resp.json::<Value>().await {
+                Ok(body) => Ok(body),
+                Err(e) => {
+                    warn!(id = %client_id, error = %e, "invalid response from client");
+                    Err(StatusCode::BAD_GATEWAY)
+                }
+            },
+            Ok(resp) => {
+                warn!(id = %client_id, status = %resp.status(), "client returned error");
+                Err(StatusCode::BAD_GATEWAY)
+            }
+            Err(e) => {
+                warn!(id = %client_id, error = %e, "failed to reach client");
+                Err(StatusCode::BAD_GATEWAY)
+            }
+        }
+    }
+}
 
 /// Forward a tool call to a client and return its result as JSON.
 ///
@@ -26,38 +74,16 @@ pub async fn forward_tool_call(
     Path(tool): Path<String>,
     Json(call): Json<ToolCall>,
 ) -> Response {
-    let rec = match state.reg.get(&client_id).await {
-        Some(rec) => rec,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({ "error": "unknown client" })),
-            )
-                .into_response();
+    match state.forward_tool(&client_id, &tool, &call).await {
+        Ok(body) => Json(body).into_response(),
+        Err(status) => {
+            let msg = match status {
+                StatusCode::NOT_FOUND => "unknown client".to_string(),
+                StatusCode::BAD_REQUEST => format!("tool '{tool}' not available on client"),
+                _ => format!("client '{tool}' failed"),
+            };
+            (status, Json(serde_json::json!({ "error": msg }))).into_response()
         }
-    };
-
-    if let Some(inv) = &rec.last_inventory {
-        if !tool_available_in_inventory(inv, &tool) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": format!("tool '{tool}' not available on client '{}'", rec.id)
-                })),
-            )
-                .into_response();
-        }
-    }
-
-    let url = format!("{}/api/tools/{tool}", rec.url.trim_end_matches('/'));
-
-    match state.http.post(&url).json(&call).send().await {
-        Ok(resp) if resp.status().is_success() => match resp.json::<Value>().await {
-            Ok(body) => Json(body).into_response(),
-            Err(e) => bad_gateway(&rec.id, format!("invalid response from client: {e}")),
-        },
-        Ok(resp) => bad_gateway(&rec.id, format!("client returned status {}", resp.status())),
-        Err(e) => bad_gateway(&rec.id, format!("failed to reach client '{}': {e}", rec.id)),
     }
 }
 
@@ -78,14 +104,6 @@ pub(crate) fn tool_available_in_inventory(inventory: &serde_json::Value, tool: &
         .unwrap_or(false)
 }
 
-fn bad_gateway(id: &str, msg: String) -> Response {
-    (
-        StatusCode::BAD_GATEWAY,
-        Json(serde_json::json!({ "error": format!("client '{id}': {msg}") })),
-    )
-        .into_response()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +115,10 @@ mod tests {
         let state = AppState {
             reg: reg.clone(),
             http: reqwest::Client::new(),
+            exec: crate::server::plan::RunStore::new(),
+            policy: std::sync::Arc::new(crate::server::plan::PolicySet {
+                entries: Vec::new(),
+            }),
         };
         (state, reg)
     }

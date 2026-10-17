@@ -14,6 +14,9 @@ pub struct Config {
     /// Static list of client base URLs (comma-separated). The server dials each
     /// of these on an interval; no client self-registration is required.
     pub clients: Vec<String>,
+    /// Path to the backup policy JSON file (env `PARASANOID_POLICY_FILE`).
+    /// When unset the backup scheduler is disabled.
+    pub policy_file: Option<String>,
 }
 
 impl Config {
@@ -41,6 +44,10 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
+            policy_file: std::env::var("PARASANOID_POLICY_FILE")
+                .ok()
+                .filter(|p| !p.trim().is_empty())
+                .map(|p| p.trim().to_string()),
         })
     }
 }

@@ -13,6 +13,7 @@ mod api;
 pub mod fs;
 pub mod heartbeat;
 pub mod host;
+pub mod plan;
 pub mod scan;
 pub mod toolapi;
 pub mod tools;
@@ -110,6 +111,11 @@ pub async fn run(version: &str) -> anyhow::Result<()> {
         // Data plane: the server forwards backup tool calls here, e.g.
         // `POST /api/tools/syncoid` with `{ "args": ["src", "dst"] }`.
         .route("/api/tools/:tool", post(toolapi::run_tool))
+        // The server asks these to discover / prune the `dest/<ts>/` snapshots
+        // it needs for hardlink retention, e.g.
+        // `GET  /api/plan/latest?dest=/backup`.
+        .route("/api/plan/latest", get(plan::latest))
+        .route("/api/plan/prune", post(plan::prune))
         .with_state(state);
 
     // Self-registration runs in the background and never blocks the API. It is
@@ -136,6 +142,9 @@ pub(crate) fn router(state: AppState) -> Router {
         // Data plane: the server forwards backup tool calls here, e.g.
         // `POST /api/tools/syncoid` with `{ "args": ["src", "dst"] }`.
         .route("/api/tools/:tool", post(toolapi::run_tool))
+        // Snapshot discovery / pruning for server-side hardlink retention.
+        .route("/api/plan/latest", get(plan::latest))
+        .route("/api/plan/prune", post(plan::prune))
         .with_state(state)
 }
 
