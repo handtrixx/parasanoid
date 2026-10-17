@@ -1,6 +1,7 @@
 # parasanoid — project inspection notes
 
-> Written 2026-10-16. Inspection only — no code changes made.
+> Written 2026-10-16 as an inspection-only write-up; now maintained as the
+> project evolves — milestones land and are annotated inline (below).
 
 ## What it is
 
@@ -9,7 +10,8 @@ Rust binary, `parasanoid-worker`, runs in one of two roles chosen explicitly:
 
 > 2026-10-17: the code has moved beyond this inspection-only writeup. The client
 > model is now implemented (see item 2 below), with new env vars and a
-> self-registration path. This file still reflects the original inspection.
+> self-registration path. Items 1–2 (and M2, item 3) are documented inline
+> below; the rest still reflects the original inspection.
 
 - **server** — the "brain" (storage box). JSON API for the UI + a discovery loop
   that dials out to clients on the LAN and pulls their host inventory.
@@ -47,8 +49,8 @@ their own tokio runtime; `main.rs` only dispatches.
 │    GET  /api/inventory   → ClientInventory                  │
 │    GET  /api/status      → WorkerStatus                     │
 │    POST /api/scan        → force fresh scan                 │
-│    GET  /api/backup/streams    → 501 (stub)                 │
-│    POST /api/backup/snapshots  → 501 (stub)                 │
+│    GET  /api/plan/latest  ?dest=… → latest snapshot dir     │
+│    POST /api/plan/prune   ?dest=…&keep=N → prune old snaps  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -86,6 +88,8 @@ Env vars in use:
   default `max(POLL_INTERVAL*3, 30)`; registered clients refresh on each poll,
   static fallbacks are never pruned), `PARASANOID_CLIENTS` (comma-sep static
   fallback list, air-gapped clients that cannot self-register).
+- Server: `PARASANOID_POLICY_FILE` (path to the backup policy JSON; unset or an
+  empty file ⇒ the backup scheduler is disabled).
 - Client: `PARASANOID_CLIENT_ID`, `PARASANOID_LISTEN` (`:9100`),
   `PARASANOID_SERVER_URL` (where the server is, for self-registration),
   `PARASANOID_PUBLISHED_URL` (where the server can reach this client; defaults
@@ -148,9 +152,10 @@ The two `/api/backup/*` 501 stubs are gone and replaced by the real data plane:
   `/api/tools/:tool`, and returns the result (or 502). AppState holds a shared
   `reqwest::Client` (also used by the discovery loop now).
 - Higher layer (build a `BackupStrategy` → sequence of `ToolCall`s from an
-  inventory + backup policy) is the **next** open chunk: ZFS via
-  `sanoid`/`syncoid` (retention + replication), btrfs via `send`/`receive`,
-  ext4/xfs via `rsync`/`restic`.
+  inventory + backup policy) — the policy → plan builder → executor core (M2)
+  is now **done** (item 3 below). What remains is the per-filesystem strategies:
+  ZFS via `sanoid`/`syncoid` (retention + replication), btrfs via `send`/
+  `receive`, ext4/xfs via `rsync`/`restic` (M3–M4 in `ROADMAP.md`).
 
 Tests added (`cargo test` green, 4/4): router integration for the client tool
 route and the server forwarding path (`unknown_client_returns_404`,
@@ -178,20 +183,63 @@ already documents `PARASANOID_SERVER_URL`/`PUBLISHED_URL`; the server compose no
 documents `PARASANOID_STALE_AFTER` and the client compose documents
 `PARASANOID_HEARTBEAT_INTERVAL`.
 
-### 3. Version-control the project
-Not a git repo yet, despite `Cargo.toml` referencing
-`https://git.handtrixxx.com/parasanoid/parasanoid.git`. `docs/` is empty.
-Commit (locally, per the KB rules — Niklas pushes). Decide what to track: the
-worker builds cleanly, so a first commit is straightforward.
+### 3. Backup policy → plan builder (M2) — DONE (2026-10-17)
 
-### 4. Add tests
+The server now owns **what** to back up, **where**, and **with what retention**,
+and turns that into an executable sequence. Data still runs on the client
+(`src/server/plan.rs`, `src/client/plan.rs`). E2E-verified 2026-10-17.
+
+- **Policy** (`server/plan.rs`): `PolicySet { entries: Vec<PolicyEntry> }`,
+  `PolicyEntry { client_id, sources, destination, retention, timeout_secs }`,
+  loaded from `PARASANOID_POLICY_FILE` (server-side JSON — the decided source of
+  truth). Empty/unset file ⇒ the backup scheduler is disabled.
+- **Plan builder** (`build_sync_plan`): policy → ordered `Vec<ToolCall>`. Each
+  source becomes one rsync call under `dest/<ts>/<basename(source)>/`.
+- **Executor** (`run_policy`): walks the plan, forwards each call via
+  `forward_tool`, records per-step results (exit code, success, duration) in a
+  `RunStore`, and marks the run failed if any step fails or is rejected
+  pre-execution. Runs trigger on demand via the control-plane routes
+  (`GET /api/backup/run`, `/api/backup/runs`, `/api/backup/run/:id`).
+- **Hardlink retention** (rsnapshot-style): unchanged files on run N+1 are
+  hardlinked against run N via `rsync --link-dest`; retention is a **count**.
+
+Client snapshot bookkeeping (`client/plan.rs`): `GET /api/plan/latest?dest=…`
+(newest `dest/<ts>` dir, so the server can pass a `--link-dest`) and `POST
+/api/plan/prune?dest=…&keep=N` (delete oldest beyond `keep`).
+
+**E2E bug fixes (commit `9a59b10`, this lands the milestone):**
+
+- `--link-dest` must be the **full** `dest/<ts>` path, not the bare ts name: the
+  client returns only the ts, but rsync resolves `--link-dest` relative to the
+  new snapshot's destination, so a bare name pointed at the wrong place and
+  hardlinks silently failed. Fixed in `latest_snapshot` (returns `dest/<ts>`).
+- Source args need a **trailing slash**: rsync copies the directory *contents*
+  into `dest/<ts>/<base>` instead of nesting `<base>/<base>` (which also broke
+  hardlinking by nesting one level too deep).
+- `prune_snapshots` sends `keep` in the **query string** — the client reads it
+  from `Query<DestParam>`. It used to be in the JSON body, where it parsed to
+  its default `0` → clamped to `1`, collapsing retention to "keep only the
+  newest". Covered by a router regression test in `src/client/plan.rs`.
+
+**Decisions (closed 2026-10-17):** policy source = server-side JSON file; first
+strategy = rsync for ext4/xfs; hardlink (not bare copy) retention. Format
+example: `examples/policy.example.json`; full history in `ROADMAP.md`.
+
+### 4. Version-control the project — DONE (2026-10-17)
+Public at <https://github.com/handtrixx/parasanoid> (push target
+`https://github.com/handtrixx/parasanoid.git`), per the KB rules — Niklas
+pushes. `Cargo.toml` already points `repository` at the public GitHub URL (the
+old `git.handtrixxx.com` reference is gone), and `.gitignore` covers build
+artifacts plus the `ui-rust/data.db` scratch DB. Local commits are made per the
+KB rules; the push is Niklas's to run.
+
+### 5. Add tests
 Done in part. Router integration tests for both roles exist for the data plane
-(`src/client/toolapi.rs`, `src/server/backup.rs`, 4/4 green). Remaining worth-
-do-its: `inventory` serialization, `slug()`, `host_tools_ready`, and router
-integration tests for the server control-plane routes. `#3` (version control) is
-done — public at https://github.com/handtrixx/parasanoid.
+(`src/client/toolapi.rs`, `src/server/backup.rs`, 4/4 green). Worth doing next:
+`inventory` serialization, `slug()`, `host_tools_ready`, and router integration
+tests for the server control-plane routes. `#4` (version control) is done.
 
-### 4b. Remove Next.js — DONE (2026-10-16)
+### 6. Remove Next.js — DONE (2026-10-16)
 Per the Decisions section, `ui/` was deleted and **`compose.yaml` was repointed**
 from the old `ui` service (port 3000) to a `ui-rust` service on port 3100
 (`PARASANOID_SERVER_URL` → `:8080`, scratch SQLite under a named volume). A
@@ -199,21 +247,21 @@ two-stage `ui-rust/Dockerfile` builds the server-rendered binary. `ui-rust/`
 runs standalone via `cargo run` locally (env `PARASANOID_UI_LISTEN`,
 `PARASANOID_SERVER_URL`, `PARASANOID_DB_PATH`).
 
-> The reproducible-build (#5) and toolchain lock-down (#6) items referred to the
-> Next.js stack and are now moot (ui/ gone). Their spirit carries over: the Rust
+> The reproducible-build and toolchain lock-down items referred to the Next.js
+> stack and are now moot (ui/ gone). Their spirit carries over: the Rust
 > UI build is still **not committed** — `ui-rust/Dockerfile` and `ui-rust/.dockerignore`
 > exist on disk but are untracked, and `Cargo.lock` should stay version-controlled
 > for a reproducible build. Committing the removal is the follow-up.
 
-### 5. (Next.js build reproducibility — superseded; see note on 4b.)
+### 7. (Next.js build reproducibility — superseded; see note on 6.)
 
-### 7. Security hardening (already flagged in code comments)
+### 8. Security hardening (already flagged in code comments)
 Discovery + client bridge is plain same-LAN HTTP. `Cargo.toml` notes future
 mutual-TLS / server pinning; the client router also leaves CORS on for
 `next dev` (comment says drop it in prod). Plan a concrete lock-down before this
 touches any non-LAN network.
 
-### 8. Deployment hygiene
+### 9. Deployment hygiene
 - Add a compose `healthcheck` for server/UI (none currently).
 - Add a `.env.example` (`.dockerignore` already references one).
 - ui-rust creates `data.db` at runtime — add a `.gitignore`/cleanup so scratch DB
@@ -233,7 +281,7 @@ touches any non-LAN network.
   `.unwrap_or_default()` — a discovery hiccup is silent; consider surfacing or
   at least tracing it.
 - **No root README.** Only `ui-rust/README.md` exists; the worker and UI have none.
-- **None remaining from the original inspection.** `ui/` is dropped (see 4b), so
+- **None remaining from the original inspection.** `ui/` is dropped (see 6), so
   the two-parallel-UI situation is resolved. The Rust UI itself is still
   scaffolding (no control plane yet) — but that is forward work, not a migration.
 
